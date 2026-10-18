@@ -68,11 +68,11 @@ as it was.
   D-pad down health pack, B crouch, Y next weapon, L3 sprint, R3 melee.
 - **`black-config.exe`** to make your own: up to three buttons per action, LB / RB / L3 / R3 and the D-pad included,
   each as a press, a tap or a hold; Xbox, PlayStation or Nintendo button names for the controller it finds; southpaw
-  sticks; "Save and play". (PlayStation and Nintendo pads need Steam Input, DS4Windows or a similar XInput driver.)
+  sticks; "Save & Play" and "Restore Defaults". (PlayStation and Nintendo pads need Steam Input, DS4Windows or a similar XInput driver.)
 - **Vibration strength**: off, 25, 50, 75 or 100%.
 
 <p align="center">
-  <img src="docs/images/black-config.png" alt="black-config.exe with PlayStation button names" width="80%">
+  <img src="docs/images/black-config.png" alt="black-config.exe, the controller layout tool" width="80%">
 </p>
 
 ### Settings and quality of life
@@ -213,7 +213,7 @@ objectives, Start pause. Menus use the pad as the game always did. `pad_layout =
 **black-config.exe** (next to black.exe; run it while the game is closed) sets which pad buttons do what in the port's
 layout, the one thing that does not fit the in-game menus: up to three buttons per action, LB / RB / L3 / R3 and the
 D-pad included, each pressed, tapped (released within 0.3 s) or held (0.3 s or longer), so one button can do two
-things like X does. "Save and play" starts the game. The lines it writes are `pad_<action> = RT` or `X.tap,LB` in
+things like X does. "Save & Play" starts the game. The lines it writes are `pad_<action> = RT` or `X.tap,LB` in
 `black.ini`. The game's own hints still name its default buttons (PRESS A TO RELOAD), whatever the layout.
 
 In menus the arrow keys move (held, they repeat), Enter selects and Backspace goes back; Enter also passes PRESS START,

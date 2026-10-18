@@ -16,33 +16,33 @@ namespace bindings {
 // binding-table index). The movement axes are split into their stick halves. Actions with game index -1 are the
 // port's own (sprint, weapon slots, cheat menu): they press nothing on the pad themselves.
 inline const Action kActions[] = {
-    {"run_forward", L"Run forward", 1, {'W', 0}},
-    {"run_back", L"Run back", 2, {'S', 0}},
-    {"step_left", L"Sidestep left", 3, {'A', 0}},
-    {"step_right", L"Sidestep right", 4, {'D', 0}},
+    {"run_forward", L"Run Forward", 1, {'W', 0}},
+    {"run_back", L"Run Back", 2, {'S', 0}},
+    {"step_left", L"Sidestep Left", 3, {'A', 0}},
+    {"step_right", L"Sidestep Right", 4, {'D', 0}},
     {"sprint", L"Sprint", -1, {VK_LSHIFT, 0}},
     {"fire", L"Fire", 9, {VK_LBUTTON, 0}},
     {"aim", L"Aim", 16, {VK_RBUTTON, 0}},
     {"reload", L"Reload", 11, {'R', 0}},
-    {"use", L"Action (use, pick up)", 13, {'E', 0}},
+    {"use", L"Action (Use, Pick Up)", 13, {'E', 0}},
     {"crouch", L"Crouch", 12, {'C', 0}},
     {"grenade", L"Grenade", 27, {'G', 0}},
     {"melee", L"Melee", 32, {'F', 0}},
-    {"next_weapon", L"Next weapon", 14, {KEY_WHEEL_DOWN, 0}},
-    {"prev_weapon", L"Previous weapon", 15, {KEY_WHEEL_UP, 0}},
-    {"firing_mode", L"Change firing mode", 30, {'Z', 0}},
-    {"suppressor", L"Toggle suppressor", 31, {'Q', 0}},
-    {"health_pack", L"Health pack", 33, {'X', 0}},
-    {"music", L"Next music track", 34, {0, 0}},
-    {"turn_left", L"Turn left", 5, {0, 0}},
-    {"turn_right", L"Turn right", 6, {0, 0}},
-    {"look_up", L"Look up", 7, {0, 0}},
-    {"look_down", L"Look down", 8, {0, 0}},
+    {"next_weapon", L"Next Weapon", 14, {KEY_WHEEL_DOWN, 0}},
+    {"prev_weapon", L"Previous Weapon", 15, {KEY_WHEEL_UP, 0}},
+    {"firing_mode", L"Change Firing Mode", 30, {'Z', 0}},
+    {"suppressor", L"Toggle Suppressor", 31, {'Q', 0}},
+    {"health_pack", L"Health Pack", 33, {'X', 0}},
+    {"music", L"Next Music Track", 34, {0, 0}},
+    {"turn_left", L"Turn Left", 5, {0, 0}},
+    {"turn_right", L"Turn Right", 6, {0, 0}},
+    {"look_up", L"Look Up", 7, {0, 0}},
+    {"look_down", L"Look Down", 8, {0, 0}},
     {"pause", L"Pause", 25, {VK_ESCAPE, 0}},
-    {"objectives", L"Show objectives", 36, {VK_SPACE, 0}},
-    {"weapon_1", L"Weapon slot 1", -1, {'1', 0}}, // switch to that inventory slot (bindings.cpp, select_slot)
-    {"weapon_2", L"Weapon slot 2", -1, {'2', 0}},
-    {"cheat_menu", L"Cheat menu", -1, {VK_F1, 0}}, // input/cheats.cpp; keyboard only (the menu needs the arrows)
+    {"objectives", L"Show Objectives", 36, {VK_SPACE, 0}},
+    {"weapon_1", L"Weapon Slot 1", -1, {'1', 0}}, // switch to that inventory slot (bindings.cpp, select_slot)
+    {"weapon_2", L"Weapon Slot 2", -1, {'2', 0}},
+    {"cheat_menu", L"Cheat Menu", -1, {VK_F1, 0}}, // input/cheats.cpp; keyboard only (the menu needs the arrows)
 };
 inline constexpr int kActionCount = sizeof kActions / sizeof kActions[0];
 

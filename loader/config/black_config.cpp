@@ -100,12 +100,12 @@ bool ini_save()
 enum Brand { kXbox, kPlayStation, kNintendo };
 const wchar_t *const kBrandName[] = {L"Xbox", L"PlayStation", L"Nintendo"};
 const wchar_t *const kNames[3][kPadButtons] = {
-    {L"A", L"B", L"X", L"Y", L"LB", L"RB", L"LT", L"RT", L"L3 (left stick)", L"R3 (right stick)", L"START", L"BACK",
-     L"D-pad up", L"D-pad down", L"D-pad left", L"D-pad right"},
-    {L"Cross", L"Circle", L"Square", L"Triangle", L"L1", L"R1", L"L2", L"R2", L"L3 (left stick)", L"R3 (right stick)",
-     L"OPTIONS", L"SHARE / CREATE", L"D-pad up", L"D-pad down", L"D-pad left", L"D-pad right"},
-    {L"B", L"A", L"Y", L"X", L"L", L"R", L"ZL", L"ZR", L"Left stick press", L"Right stick press", L"+ (plus)",
-     L"- (minus)", L"D-pad up", L"D-pad down", L"D-pad left", L"D-pad right"},
+    {L"A", L"B", L"X", L"Y", L"LB", L"RB", L"LT", L"RT", L"Left Stick (L3)", L"Right Stick (R3)", L"Start", L"Back",
+     L"D-Pad Up", L"D-Pad Down", L"D-Pad Left", L"D-Pad Right"},
+    {L"Cross", L"Circle", L"Square", L"Triangle", L"L1", L"R1", L"L2", L"R2", L"Left Stick (L3)", L"Right Stick (R3)",
+     L"Options", L"Share / Create", L"D-Pad Up", L"D-Pad Down", L"D-Pad Left", L"D-Pad Right"},
+    {L"B", L"A", L"Y", L"X", L"L", L"R", L"ZL", L"ZR", L"Left Stick Press", L"Right Stick Press", L"Plus (+)",
+     L"Minus (−)", L"D-Pad Up", L"D-Pad Down", L"D-Pad Left", L"D-Pad Right"},
 };
 
 Brand detect_brand(bool *found)
@@ -136,13 +136,16 @@ Brand detect_brand(bool *found)
 enum : int { ID_SAVE = 101, ID_PLAY, ID_CLOSE, ID_DEFAULTS, ID_CLEAR, ID_LAYOUT, ID_STICKS, ID_RUMBLE, ID_NAMES, ID_PAD0 = 1000 };
 constexpr int kRumble[] = {0, 25, 50, 75, 100};
 constexpr UINT_PTR kDetectTimer = 1;
+const wchar_t kTitle[] = L"BLACK: Full Auto – Controller Layout";
+const wchar_t kNone[] = L"—";
 
-HWND g_wnd, g_status, g_note, g_detected;
-HFONT g_font, g_bold;
+HWND g_wnd, g_status, g_note, g_detected, g_hint, g_title, g_subtitle;
+HWND g_group_settings, g_group_mapping;
+HFONT g_font, g_bold, g_big;
 float g_dpi = 1.0f;
 HWND g_pad[kActionCount][kPadSlots], g_action[kActionCount];
 HWND g_layout, g_sticks, g_rumble, g_names;
-HWND g_head[6], g_top_label[4], g_buttons[5]; // column headers; Layout / Sticks / Vibration / Button names labels
+HWND g_head[8], g_top_label[4], g_buttons[5]; // column headers; the settings' labels; the push buttons
 Brand g_brand = kXbox;      // whose names the lists show
 Brand g_detected_brand = kXbox;
 bool g_pad_found;
@@ -164,10 +167,10 @@ HWND combo(int id, std::initializer_list<const wchar_t *> items)
     return c;
 }
 
-HWND label(const wchar_t *text, bool bold = false)
+HWND label(const wchar_t *text, HFONT font = nullptr, DWORD align = SS_LEFT)
 {
-    HWND l = add(L"STATIC", text, SS_LEFT);
-    if (bold) SendMessageW(l, WM_SETFONT, (WPARAM)g_bold, TRUE);
+    HWND l = add(L"STATIC", text, align);
+    if (font) SendMessageW(l, WM_SETFONT, (WPARAM)font, TRUE);
     return l;
 }
 
@@ -175,14 +178,14 @@ void place(HWND c, int x, int y, int w, int h) { MoveWindow(c, S(x), S(y), S(w),
 
 int pad_index(const PadBind &b) { return b.button < 0 ? 0 : 1 + b.button * 3 + b.mode; }
 
-// The pad lists' entries in the current brand's names, keeping each list's choice.
+// The button lists in the current brand's names, keeping each list's choice.
 void fill_pad_lists()
 {
-    std::vector<std::wstring> items = {L"-"};
+    std::vector<std::wstring> items = {kNone};
     for (int b = 0; b < kPadButtons; b++) {
         items.push_back(kNames[g_brand][b]);
-        items.push_back(std::wstring(kNames[g_brand][b]) + L" (tap)");
-        items.push_back(std::wstring(kNames[g_brand][b]) + L" (hold)");
+        items.push_back(std::wstring(kNames[g_brand][b]) + L" (Tap)");
+        items.push_back(std::wstring(kNames[g_brand][b]) + L" (Hold)");
     }
     for (int a = 0; a < kActionCount; a++)
         for (int s = 0; s < kPadSlots; s++) {
@@ -200,12 +203,12 @@ void fill_pad_lists()
 
 void show_detected()
 {
-    std::wstring s = g_pad_found ? std::wstring(L"Controller found: ") + kBrandName[g_detected_brand]
-                                 : std::wstring(L"No controller found (names: ") + kBrandName[g_brand] + L")";
+    std::wstring s = g_pad_found ? std::wstring(L"Detected: ") + kBrandName[g_detected_brand] + L" controller"
+                                 : std::wstring(L"No controller detected (showing ") + kBrandName[g_brand] + L" names)";
     SetWindowTextW(g_detected, s.c_str());
 }
 
-// "Auto" follows the detected brand; checked again every 2 s so plugging a pad in updates the names.
+// "Automatic" follows the detected brand; checked again every 2 s so plugging a controller in updates the names.
 void update_brand()
 {
     g_detected_brand = detect_brand(&g_pad_found);
@@ -254,8 +257,8 @@ void status(const wchar_t *text) { SetWindowTextW(g_status, text); }
 bool save_values()
 {
     if (FindWindowW(L"BlackLoaderWindow", nullptr)) {
-        MessageBoxW(g_wnd, L"BLACK is running. Close the game first: it writes black.ini when it closes, which would undo "
-                           L"these changes.", L"BLACK controller", MB_OK | MB_ICONWARNING);
+        MessageBoxW(g_wnd, L"BLACK is currently running.\n\nPlease close the game first. It saves its settings when it "
+                           L"exits, which would overwrite these changes.", kTitle, MB_OK | MB_ICONWARNING);
         return false;
     }
     ini_load(); // keep whatever the game wrote since this window opened
@@ -265,10 +268,11 @@ bool save_values()
     for (int a = 0; a < kActionCount; a++)
         if (g_pad[a][0]) ini_set(std::string("pad_") + kActions[a].ini, pad_row(a));
     if (!ini_save()) {
-        MessageBoxW(g_wnd, (L"Could not write " + ini_path()).c_str(), L"BLACK controller", MB_OK | MB_ICONERROR);
+        MessageBoxW(g_wnd, L"The settings could not be saved. Check that black.ini in this folder is not read-only.",
+                    kTitle, MB_OK | MB_ICONERROR);
         return false;
     }
-    status(L"Saved.");
+    status(L"Settings saved.");
     return true;
 }
 
@@ -276,85 +280,98 @@ int rows() { return (kActionCount - 1 + 1) / 2; } // two columns; the cheat menu
 
 void build()
 {
-    g_top_label[0] = label(L"Layout");
-    g_layout = combo(ID_LAYOUT, {L"The port's layout (set below)", L"The game's own layouts (its controls menu)"});
-    g_top_label[1] = label(L"Sticks");
-    g_sticks = combo(ID_STICKS, {L"Left moves, right looks", L"Southpaw (swapped)"});
-    g_top_label[2] = label(L"Vibration");
+    g_group_settings = add(L"BUTTON", L"Controller Settings", BS_GROUPBOX);
+    g_group_mapping = add(L"BUTTON", L"Button Mapping", BS_GROUPBOX);
+    g_title = label(L"Controller Layout", g_big);
+    g_subtitle = label(L"Choose which controller buttons perform each action in BLACK: Full Auto.");
+    g_top_label[0] = label(L"Layout:");
+    g_layout = combo(ID_LAYOUT, {L"Custom (set below)", L"Original (in-game Controls menu)"});
+    g_top_label[1] = label(L"Stick layout:");
+    g_sticks = combo(ID_STICKS, {L"Standard (move left, look right)", L"Southpaw (sticks swapped)"});
+    g_top_label[2] = label(L"Vibration:");
     g_rumble = combo(ID_RUMBLE, {L"Off", L"25%", L"50%", L"75%", L"100%"});
-    g_top_label[3] = label(L"Button names");
-    g_names = combo(ID_NAMES, {L"Auto (the connected controller)", L"Xbox", L"PlayStation", L"Nintendo"});
+    g_top_label[3] = label(L"Button names:");
+    g_names = combo(ID_NAMES, {L"Automatic", L"Xbox", L"PlayStation", L"Nintendo"});
     SendMessageW(g_names, CB_SETCURSEL, 0, 0);
     g_detected = label(L"");
-    g_note = label(L"Up to three buttons per action. Tap: released within 0.3 s. Hold: held 0.3 s or longer. A button may "
-                   L"be used by several actions. PlayStation and Nintendo controllers need Steam Input, DS4Windows or a "
-                   L"similar XInput driver; the names follow the button positions. Layout, sticks and vibration are also "
-                   L"in the game (PC SETTINGS > CONTROLS), as is everything else.");
-    for (int c = 0; c < 2; c++) {
-        g_head[c * 2] = label(L"Action", true);
-        g_head[c * 2 + 1] = label(L"Buttons", true);
-    }
+    g_hint = label(L"Assign up to three buttons to each action. Tap: press and release within 0.3 seconds. Hold: keep it "
+                   L"pressed for 0.3 seconds or longer. A button can be used for more than one action.");
+    const wchar_t *heads[4] = {L"Action", L"Button 1", L"Button 2", L"Button 3"};
+    for (int c = 0; c < 2; c++)
+        for (int i = 0; i < 4; i++) g_head[c * 4 + i] = label(heads[i], g_bold);
     for (int a = 0; a < kActionCount; a++) {
         if (strcmp(kActions[a].ini, "cheat_menu") == 0) continue;
         g_action[a] = label(kActions[a].name);
         for (int s = 0; s < kPadSlots; s++)
             g_pad[a][s] = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_PAD0 + a * kPadSlots + s);
     }
-    g_buttons[0] = add(L"BUTTON", L"Call of Duty layout", BS_PUSHBUTTON | WS_TABSTOP, ID_DEFAULTS);
-    g_buttons[1] = add(L"BUTTON", L"Clear all", BS_PUSHBUTTON | WS_TABSTOP, ID_CLEAR);
+    g_buttons[0] = add(L"BUTTON", L"Restore Defaults", BS_PUSHBUTTON | WS_TABSTOP, ID_DEFAULTS);
+    g_buttons[1] = add(L"BUTTON", L"Clear All", BS_PUSHBUTTON | WS_TABSTOP, ID_CLEAR);
+    g_note = label(L"PlayStation and Nintendo controllers need Steam Input, DS4Windows or a similar XInput driver. The "
+                   L"layout, stick and vibration settings can also be changed in the game under PC Settings > Controls.");
     g_buttons[2] = add(L"BUTTON", L"Save", BS_DEFPUSHBUTTON | WS_TABSTOP, ID_SAVE);
-    g_buttons[3] = add(L"BUTTON", L"Save and play", BS_PUSHBUTTON | WS_TABSTOP, ID_PLAY);
+    g_buttons[3] = add(L"BUTTON", L"Save && Play", BS_PUSHBUTTON | WS_TABSTOP, ID_PLAY);
     g_buttons[4] = add(L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, ID_CLOSE);
-    g_status = label((L"Settings file: " + ini_path()).c_str());
-    SetWindowLongW(g_status, GWL_STYLE, GetWindowLongW(g_status, GWL_STYLE) | SS_PATHELLIPSIS);
+    g_status = label(L"Settings are saved to black.ini in this folder.");
     fill_pad_lists();
 }
 
-constexpr int kMinW = 1040, kRowH = 30;
-int content_height() { return 16 + 36 + 34 + 52 + 24 + rows() * kRowH + 10 + 48 + 30 + 16; }
+constexpr int kMinW = 1040, kRowH = 28, kSettingsY = 68, kSettingsH = 92, kMappingY = 172;
+int mapping_height() { return 94 + rows() * kRowH + 8 + 28 + 14; } // hint, headers, rows, buttons, margin
+int content_height() { return kMappingY + mapping_height() + 12 + 36 + 10 + 30 + 16; }
 
 // Everything placed for a client area w (in 96-dpi units): two columns of actions sharing the width, each with the
 // action's name and three lists of equal width.
 void layout(int w)
 {
     w = std::max(w, kMinW);
-    int m = 24, y = 16;
-    place(g_top_label[0], m, y + 3, 50, 20);
-    place(g_layout, m + 52, y, 300, 320);
-    place(g_top_label[1], m + 370, y + 3, 46, 20);
-    place(g_sticks, m + 418, y, 200, 320);
-    place(g_top_label[2], m + 636, y + 3, 66, 20);
-    place(g_rumble, m + 704, y, 90, 320);
-    y += 36;
-    place(g_top_label[3], m, y + 3, 90, 20);
-    place(g_names, m + 92, y, 260, 320);
-    place(g_detected, m + 370, y + 3, w - m - 370 - m, 20);
+    int m = 20, in = m + 16, gw = w - 2 * m;
+    place(g_title, m, 10, gw, 30);
+    place(g_subtitle, m, 42, gw, 20);
+
+    place(g_group_settings, m, kSettingsY, gw, kSettingsH);
+    int y = kSettingsY + 24;
+    place(g_top_label[0], in, y + 3, 92, 20);
+    place(g_layout, in + 96, y, 300, 320);
+    place(g_top_label[1], in + 416, y + 3, 92, 20);
+    place(g_sticks, in + 510, y, 250, 320);
+    place(g_top_label[2], in + 780, y + 3, 70, 20);
+    place(g_rumble, in + 852, y, 100, 320);
     y += 34;
-    place(g_note, m, y, w - 2 * m, 48);
-    y += 52;
-    int col_w = (w - 2 * m - 24) / 2, name_w = std::min(190, col_w / 3), list_w = (col_w - name_w - 3 * 6) / 3;
+    place(g_top_label[3], in, y + 3, 92, 20);
+    place(g_names, in + 96, y, 300, 320);
+    place(g_detected, in + 416, y + 3, gw - 416 - 32, 20);
+
+    place(g_group_mapping, m, kMappingY, gw, mapping_height());
+    y = kMappingY + 24;
+    place(g_hint, in, y, gw - 32, 36);
+    y += 44;
+    int inner = gw - 32, col_w = (inner - 28) / 2, name_w = std::min(170, col_w / 3), list_w = (col_w - name_w - 3 * 6) / 3;
     for (int c = 0; c < 2; c++) {
-        int x = m + c * (col_w + 24);
-        place(g_head[c * 2], x, y + 3, name_w, 20);
-        place(g_head[c * 2 + 1], x + name_w + 6, y + 3, list_w, 20);
+        int x = in + c * (col_w + 28);
+        place(g_head[c * 4], x, y, name_w, 20);
+        for (int i = 1; i < 4; i++) place(g_head[c * 4 + i], x + name_w + 6 + (i - 1) * (list_w + 6) + 2, y, list_w, 20);
     }
-    y += 24;
+    y += 26;
     for (int a = 0, n = 0; a < kActionCount; a++) {
         if (!g_action[a]) continue;
         int col = n / rows(), row = n % rows();
         n++;
-        int x = m + col * (col_w + 24), yy = y + row * kRowH;
+        int x = in + col * (col_w + 28), yy = y + row * kRowH;
         place(g_action[a], x, yy + 3, name_w, 20);
         for (int s = 0; s < kPadSlots; s++) place(g_pad[a][s], x + name_w + 6 + s * (list_w + 6), yy, list_w, 360);
     }
-    int by = y + rows() * kRowH + 10;
-    place(g_buttons[0], m, by, 170, 28);
-    place(g_buttons[1], m + 180, by, 110, 28);
-    by += 48;
-    place(g_status, m, by + 6, w - 2 * m - 350, 22);
-    place(g_buttons[2], w - m - 330, by, 100, 30);
-    place(g_buttons[3], w - m - 220, by, 120, 30);
-    place(g_buttons[4], w - m - 90, by, 90, 30);
+    y += rows() * kRowH + 8;
+    place(g_buttons[0], in, y, 150, 28);
+    place(g_buttons[1], in + 160, y, 110, 28);
+
+    y = kMappingY + mapping_height() + 12;
+    place(g_note, m, y, gw, 36);
+    y += 46;
+    place(g_status, m, y + 7, gw - 360, 20);
+    place(g_buttons[2], w - m - 340, y, 100, 30);
+    place(g_buttons[3], w - m - 230, y, 120, 30);
+    place(g_buttons[4], w - m - 100, y, 100, 30);
     InvalidateRect(g_wnd, nullptr, TRUE);
 }
 
@@ -386,22 +403,26 @@ LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         case ID_DEFAULTS:
             for (int a = 0; a < kActionCount; a++)
                 if (g_pad[a][0]) set_pad_row(a, pad_default(a));
-            status(L"Call of Duty layout set (not saved yet).");
+            status(L"Default layout restored. Click Save to keep it.");
             return 0;
         case ID_CLEAR:
             for (int a = 0; a < kActionCount; a++)
                 for (int s = 0; s < kPadSlots && g_pad[a][0]; s++) SendMessageW(g_pad[a][s], CB_SETCURSEL, 0, 0);
-            status(L"All buttons cleared (not saved yet).");
+            status(L"All buttons cleared. Click Save to keep this.");
             return 0;
         case ID_NAMES:
             if (HIWORD(wp) == CBN_SELCHANGE) update_brand(); // only the names: nothing to save
             return 0;
         }
-        if (HIWORD(wp) == CBN_SELCHANGE) status(L"Changed (not saved yet).");
+        if (HIWORD(wp) == CBN_SELCHANGE) status(L"You have unsaved changes.");
         return 0;
-    case WM_CTLCOLORSTATIC:
-        SetBkMode((HDC)wp, TRANSPARENT);
+    case WM_CTLCOLORSTATIC: {
+        HDC dc = (HDC)wp;
+        HWND c = (HWND)lp;
+        SetBkMode(dc, TRANSPARENT);
+        if (c == g_note || c == g_subtitle || c == g_detected || c == g_hint) SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
         return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+    }
     case WM_DESTROY: PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
@@ -424,8 +445,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     NONCLIENTMETRICSW ncm = {sizeof ncm};
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
-    ncm.lfMessageFont.lfWeight = FW_BOLD;
-    g_bold = CreateFontIndirectW(&ncm.lfMessageFont);
+    LOGFONTW lf = ncm.lfMessageFont;
+    lf.lfWeight = FW_SEMIBOLD;
+    g_bold = CreateFontIndirectW(&lf);
+    lf.lfHeight = lf.lfHeight * 8 / 5; // the title, 1.6 times the text
+    g_big = CreateFontIndirectW(&lf);
 
     WNDCLASSW wc = {};
     wc.lpfnWndProc = wndproc;
@@ -437,8 +461,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN; // resizable; the lists widen with the window
     RECT r = {0, 0, S(1180), S(content_height())};
     AdjustWindowRect(&r, style, FALSE);
-    g_wnd = CreateWindowExW(0, wc.lpszClassName, L"BLACK - controller layout", style, CW_USEDEFAULT, CW_USEDEFAULT,
-                            r.right - r.left, r.bottom - r.top, nullptr, nullptr, inst, nullptr);
+    g_wnd = CreateWindowExW(0, wc.lpszClassName, kTitle, style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left,
+                            r.bottom - r.top, nullptr, nullptr, inst, nullptr);
     build();
     load_values();
     update_brand();
