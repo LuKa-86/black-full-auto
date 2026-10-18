@@ -2,7 +2,8 @@
 // black.ini next to it (the folder black.exe keeps its files in): pad_<action> lines with up to three pad buttons per
 // action, each pressed, tapped or held (input/action_list.h has the actions and the defaults; kPresets below adds
 // layouts modelled on other shooters), the layout switch
-// (the port's or the game's own), southpaw sticks and the vibration strength. Every other setting is in the game's
+// (the port's or the game's own), southpaw sticks, the vibration strength and how the right stick turns and looks
+// (look_* lines, input/mouselook.cpp). Every other setting is in the game's
 // PC SETTINGS pages. Lines the tool does not know are kept as they are. The game reads black.ini when it starts and
 // writes it when its settings change and when it closes, so the tool asks for the game to be closed first.
 #include "input/action_list.h"
@@ -146,6 +147,7 @@ Brand detect_brand(bool *found)
 struct Preset {
     const wchar_t *name;
     std::vector<std::pair<const char *, const char *>> buttons; // empty: the game's own layouts
+    bool modern_look = true; // the modern stick look (kLookModern), else the game's (kLookGame)
 };
 const std::vector<std::pair<const char *, const char *>> kCommon = {
     {"fire", "RT"}, {"aim", "LT"}, {"sprint", "L3"}, {"reload", "X.tap"}, {"use", "X.hold"}, {"next_weapon", "Y"},
@@ -157,14 +159,22 @@ const Preset kPresets[] = {
     {L"Battlefield", {{"grenade", "RB"}, {"melee", "R3"}, {"crouch", "B"}, {"health_pack", "LB,DDOWN"}}},
     {L"Halo Infinite", {{"grenade", "LB"}, {"melee", "B"}, {"crouch", "R3"}, {"health_pack", "RB,DDOWN"}}},
     {L"Destiny 2", {{"grenade", "LB"}, {"melee", "RB"}, {"crouch", "B"}, {"health_pack", "DDOWN"}}},
-    {L"BLACK (original game layout)", {}},
+    {L"BLACK (original game layout)", {}, false},
 };
 
 // ---- window ----
 
 enum : int { ID_SAVE = 101, ID_PLAY, ID_CLOSE, ID_DEFAULTS, ID_CLEAR, ID_LAYOUT, ID_STICKS, ID_RUMBLE, ID_NAMES, ID_PRESET,
-             ID_PAD0 = 1000 };
+             ID_LOOK_X, ID_LOOK_Y, ID_CURVE, ID_BOOST, ID_PAD0 = 1000 };
 constexpr int kRumble[] = {0, 25, 50, 75, 100};
+// Stick look: speeds in percent of the game's (turning 80 degrees a second, looking up and down 25), the response
+// curve and the turn boost at full tilt (black.ini look_speed_x / look_speed_y / look_curve / look_boost).
+constexpr int kLookSpeeds[] = {50, 75, 100, 125, 150, 175, 200, 250, 300};
+const char *const kCurveIni[] = {"game", "modern", "linear"}, *const kBoostIni[] = {"game", "fast", "off"};
+struct Look {
+    int x, y, curve, boost;
+};
+constexpr Look kLookGame = {100, 100, 0, 0}, kLookModern = {100, 175, 1, 1};
 constexpr UINT_PTR kDetectTimer = 1;
 const wchar_t kTitle[] = L"BLACK: Full Auto – Controller Layout";
 const wchar_t kNone[] = L"—";
@@ -175,7 +185,8 @@ HFONT g_font, g_bold, g_big;
 float g_dpi = 1.0f;
 HWND g_pad[kActionCount][kPadSlots], g_action[kActionCount];
 HWND g_layout, g_sticks, g_rumble, g_names, g_preset, g_preset_label;
-HWND g_head[8], g_top_label[4], g_buttons[5]; // column headers; the settings' labels; the push buttons
+HWND g_look_x, g_look_y, g_curve, g_boost;
+HWND g_head[8], g_top_label[8], g_buttons[5]; // column headers; the settings' labels; the push buttons
 Brand g_brand = kXbox;      // whose names the lists show
 Brand g_detected_brand = kXbox;
 bool g_pad_found;
@@ -286,6 +297,32 @@ std::string pad_row(int a)
     return pad_text(b);
 }
 
+int speed_index(int percent)
+{
+    int best = 0;
+    for (int i = 0; i < (int)std::size(kLookSpeeds); i++)
+        if (abs(kLookSpeeds[i] - percent) < abs(kLookSpeeds[best] - percent)) best = i;
+    return best;
+}
+
+int ini_choice(const std::string &key, const char *const *names, int def)
+{
+    std::string v = ini_get(key, names[def]);
+    for (int i = 0; i < 3; i++)
+        if (v == names[i]) return i;
+    return def;
+}
+
+void set_look(const Look &l)
+{
+    SendMessageW(g_look_x, CB_SETCURSEL, speed_index(l.x), 0);
+    SendMessageW(g_look_y, CB_SETCURSEL, speed_index(l.y), 0);
+    SendMessageW(g_curve, CB_SETCURSEL, l.curve, 0);
+    SendMessageW(g_boost, CB_SETCURSEL, l.boost, 0);
+}
+
+int sel(HWND c, int n) { return std::clamp((int)SendMessageW(c, CB_GETCURSEL, 0, 0), 0, n - 1); }
+
 void load_values()
 {
     ini_load();
@@ -295,6 +332,8 @@ void load_values()
     for (int i = 0; i < 5; i++)
         if (r >= kRumble[i]) ri = i;
     SendMessageW(g_rumble, CB_SETCURSEL, ri, 0);
+    set_look({ini_int("look_speed_x", kLookModern.x), ini_int("look_speed_y", kLookModern.y),
+              ini_choice("look_curve", kCurveIni, kLookModern.curve), ini_choice("look_boost", kBoostIni, kLookModern.boost)});
     for (int a = 0; a < kActionCount; a++)
         if (g_pad[a][0]) set_pad_row(a, ini_get(std::string("pad_") + kActions[a].ini, pad_default(a)));
 }
@@ -311,7 +350,11 @@ bool save_values()
     ini_load(); // keep whatever the game wrote since this window opened
     ini_set("pad_layout", SendMessageW(g_layout, CB_GETCURSEL, 0, 0) == 1 ? "game" : "cod");
     ini_set("pad_sticks", SendMessageW(g_sticks, CB_GETCURSEL, 0, 0) == 1 ? "southpaw" : "normal");
-    ini_set("rumble", std::to_string(kRumble[std::clamp((int)SendMessageW(g_rumble, CB_GETCURSEL, 0, 0), 0, 4)]));
+    ini_set("rumble", std::to_string(kRumble[sel(g_rumble, 5)]));
+    ini_set("look_speed_x", std::to_string(kLookSpeeds[sel(g_look_x, (int)std::size(kLookSpeeds))]));
+    ini_set("look_speed_y", std::to_string(kLookSpeeds[sel(g_look_y, (int)std::size(kLookSpeeds))]));
+    ini_set("look_curve", kCurveIni[sel(g_curve, 3)]);
+    ini_set("look_boost", kBoostIni[sel(g_boost, 3)]);
     for (int a = 0; a < kActionCount; a++)
         if (g_pad[a][0]) ini_set(std::string("pad_") + kActions[a].ini, pad_row(a));
     if (!ini_save()) {
@@ -330,7 +373,7 @@ void build()
     g_group_settings = add(L"BUTTON", L"Controller Settings", BS_GROUPBOX);
     g_group_mapping = add(L"BUTTON", L"Button Mapping", BS_GROUPBOX);
     g_title = label(L"Controller Layout", g_big);
-    g_subtitle = label(L"Choose which controller buttons perform each action in BLACK: Full Auto.");
+    g_subtitle = label(L"Choose which controller buttons perform each action in BLACK: Full Auto, and how the right stick looks around.");
     g_top_label[0] = label(L"Layout:");
     g_layout = combo(ID_LAYOUT, {L"Custom (set below)", L"Original (in-game Controls menu)"});
     g_top_label[1] = label(L"Stick layout:");
@@ -341,6 +384,19 @@ void build()
     g_names = combo(ID_NAMES, {L"Automatic", L"Xbox", L"PlayStation", L"Nintendo"});
     SendMessageW(g_names, CB_SETCURSEL, 0, 0);
     g_detected = label(L"");
+    g_top_label[4] = label(L"Turn speed:");
+    g_look_x = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_LOOK_X);
+    g_top_label[5] = label(L"Up/down speed:");
+    g_look_y = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_LOOK_Y);
+    for (HWND c : {g_look_x, g_look_y})
+        for (int v : kLookSpeeds) {
+            std::wstring s = std::to_wstring(v) + (v == 100 ? L"% (original)" : L"%");
+            SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)s.c_str());
+        }
+    g_top_label[6] = label(L"Stick response:");
+    g_curve = combo(ID_CURVE, {L"Original", L"Modern", L"Linear"});
+    g_top_label[7] = label(L"Turn boost:");
+    g_boost = combo(ID_BOOST, {L"Original", L"Fast", L"Off"});
     g_hint = label(L"Assign up to three buttons to each action. Tap: press and release within 0.3 seconds. Hold: keep it "
                    L"pressed for 0.3 seconds or longer. A combo (such as L3 + R3) acts when both buttons are pressed together. A button "
                    L"can be used for more than one action.");
@@ -358,8 +414,10 @@ void build()
     SendMessageW(g_preset, CB_SETCURSEL, 0, 0);
     g_buttons[0] = add(L"BUTTON", L"Apply Preset", BS_PUSHBUTTON | WS_TABSTOP, ID_DEFAULTS);
     g_buttons[1] = add(L"BUTTON", L"Clear All", BS_PUSHBUTTON | WS_TABSTOP, ID_CLEAR);
-    g_note = label(L"PlayStation and Nintendo controllers need Steam Input, DS4Windows or a similar XInput driver. The "
-                   L"layout, stick and vibration settings can also be changed in the game under PC Settings > Controls.");
+    g_note = label(L"Look speeds are relative to the original game (100%). Modern and Linear response turn faster with the "
+                   L"stick part of the way over; turn boost adds speed when the stick is pushed all the way (Fast reaches it "
+                   L"sooner). PlayStation and Nintendo controllers need Steam Input, DS4Windows or a similar XInput driver. "
+                   L"The layout, stick and vibration settings can also be changed in the game under PC Settings > Controls.");
     g_buttons[2] = add(L"BUTTON", L"Save", BS_DEFPUSHBUTTON | WS_TABSTOP, ID_SAVE);
     g_buttons[3] = add(L"BUTTON", L"Save && Play", BS_PUSHBUTTON | WS_TABSTOP, ID_PLAY);
     g_buttons[4] = add(L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, ID_CLOSE);
@@ -367,9 +425,9 @@ void build()
     fill_pad_lists();
 }
 
-constexpr int kMinW = 1040, kRowH = 28, kSettingsY = 68, kSettingsH = 92, kMappingY = 172;
+constexpr int kMinW = 1040, kRowH = 28, kSettingsY = 68, kSettingsH = 126, kMappingY = 206;
 int mapping_height() { return 100 + rows() * kRowH + 8 + 28 + 14; } // hint, headers, rows, buttons, margin
-int content_height() { return kMappingY + mapping_height() + 12 + 36 + 10 + 30 + 16; }
+int content_height() { return kMappingY + mapping_height() + 12 + 54 + 10 + 30 + 16; }
 
 // Everything placed for a client area w (in 96-dpi units): two columns of actions sharing the width, each with the
 // action's name and three lists of equal width.
@@ -388,6 +446,15 @@ void layout(int w)
     place(g_sticks, in + 510, y, 250, 320);
     place(g_top_label[2], in + 780, y + 3, 70, 20);
     place(g_rumble, in + 852, y, 100, 320);
+    y += 34;
+    place(g_top_label[4], in, y + 3, 92, 20);
+    place(g_look_x, in + 96, y, 120, 320);
+    place(g_top_label[5], in + 232, y + 3, 104, 20);
+    place(g_look_y, in + 338, y, 120, 320);
+    place(g_top_label[6], in + 474, y + 3, 100, 20);
+    place(g_curve, in + 576, y, 160, 320);
+    place(g_top_label[7], in + 756, y + 3, 80, 20);
+    place(g_boost, in + 852, y, 100, 320);
     y += 34;
     place(g_top_label[3], in, y + 3, 92, 20);
     place(g_names, in + 96, y, 300, 320);
@@ -419,8 +486,8 @@ void layout(int w)
     place(g_buttons[1], in + 466, y, 110, 28);
 
     y = kMappingY + mapping_height() + 12;
-    place(g_note, m, y, gw, 36);
-    y += 46;
+    place(g_note, m, y, gw, 54);
+    y += 64;
     place(g_status, m, y + 7, gw - 360, 20);
     place(g_buttons[2], w - m - 340, y, 100, 30);
     place(g_buttons[3], w - m - 230, y, 120, 30);
@@ -456,7 +523,8 @@ LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         case ID_DEFAULTS: { // Apply Preset
             int i = std::clamp((int)SendMessageW(g_preset, CB_GETCURSEL, 0, 0), 0, (int)std::size(kPresets) - 1);
             const Preset &p = kPresets[i];
-            std::wstring msg = std::wstring(p.name) + L" layout applied. Click Save to keep it.";
+            std::wstring msg = std::wstring(p.name) + L" layout and look settings applied. Click Save to keep them.";
+            set_look(p.modern_look ? kLookModern : kLookGame);
             if (p.buttons.empty()) { // the game's own controller layouts
                 SendMessageW(g_layout, CB_SETCURSEL, 1, 0);
                 status(msg.c_str());

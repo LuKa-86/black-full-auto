@@ -65,6 +65,9 @@ off at once and gives you BLACK as it was.
 - **`black-config.exe`** for your own layout: up to three buttons per action, including LB, RB, L3, R3 and the D-pad,
   each as a press, tap or hold, plus two-button combos such as L3 + R3. It has presets based on Call of Duty, Battlefield, Halo Infinite and Destiny 2, shows
   Xbox, PlayStation or Nintendo button names for the controller it detects, and offers southpaw sticks.
+- **Modern stick look**: the right stick turns faster when pushed part of the way, reaches full speed sooner and looks
+  up and down faster. Turn and up/down speed, the stick response and the turn boost can be set in `black-config.exe`
+  (Original gives the game's own feel).
 - **Vibration strength** from off to 100%.
 
 <p align="center">

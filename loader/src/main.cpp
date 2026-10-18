@@ -90,6 +90,7 @@ void usage()
            "  --rawvideo <file> record the picture as raw BGRX frames from --shot-start for --clip-seconds (default 4)\n"
            "  --mouse-sens K    mouse look sensitivity, K x 0.022 degrees per count (default 2.0)\n"
            "  --mouse-invert    mouse forward looks down\n"
+           "  --pad-game-look   the game's own right-stick speed, response and turn boost (black-config.exe sets them)\n"
            "  --autoaim         the game's auto-aim (the view pulling toward enemies), off by default; --no-autoaim\n"
            "  --no-reload-blur  no screen blur while reloading\n"
            "  --crosshair N     0 the game's, 1 dot, 2-4 small/normal/large cross, 5 cross and dot, 6 circle\n"
@@ -212,6 +213,11 @@ bool parse_args()
         else if (a == L"--enemy-markers") { g_cfg.enemy_markers = true; settings_mark_cli("enemy_markers"); }
         else if (a == L"--no-grenade-cook") { g_cfg.grenade_cook = false; settings_mark_cli("grenade_cook"); }
         else if (a == L"--pad-game-layout") { g_cfg.pad_cod = false; settings_mark_cli("pad_layout"); }
+        else if (a == L"--pad-game-look") {
+            g_cfg.look_x = g_cfg.look_y = 100;
+            g_cfg.look_curve = g_cfg.look_boost = 0;
+            for (const char *k : {"look_speed_x", "look_speed_y", "look_curve", "look_boost"}) settings_mark_cli(k);
+        }
         else if (a == L"--god") g_cfg.cheat_god = true;
         else if (a == L"--infinite-ammo") g_cfg.cheat_ammo = true;
         else if (a == L"--infinite-grenades") g_cfg.cheat_grenades = true;

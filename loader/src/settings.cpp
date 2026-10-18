@@ -64,7 +64,11 @@ void settings_load()
         else if (k == "enemy_markers") g_cfg.enemy_markers = v != 0;
         else if (k == "grenade_cook") g_cfg.grenade_cook = v != 0;
         else if (k == "rumble") g_cfg.rumble = std::clamp(atoi(val), 0, 100);
-        else if (k == "unfocused") g_cfg.unfocused = std::clamp(atoi(val), 0, 2);
+        else if (k == "look_speed_x") g_cfg.look_x = std::clamp(atoi(val), 25, 400);
+        else if (k == "look_speed_y") g_cfg.look_y = std::clamp(atoi(val), 25, 400);
+        else if (k == "look_curve") g_cfg.look_curve = !strcmp(val, "game") ? 0 : !strcmp(val, "linear") ? 2 : 1;
+        else if (k == "look_boost") g_cfg.look_boost = !strcmp(val, "game") ? 0 : !strcmp(val, "off") ? 2 : 1;
+        else if (k == "unfocused")g_cfg.unfocused = std::clamp(atoi(val), 0, 2);
         else if (k == "hit_marker") g_cfg.hit_marker = v != 0;
         else if (k == "grenade_warning") g_cfg.grenade_warning = v != 0;
         else if (k == "ammo_warning") g_cfg.ammo_warning = v != 0;
@@ -105,6 +109,9 @@ void settings_save()
     fprintf(f, "health_percent = %d\nenemy_markers = %d\n", g_cfg.health_percent ? 1 : 0, g_cfg.enemy_markers ? 1 : 0);
     fprintf(f, "grenade_cook = %d\n", g_cfg.grenade_cook ? 1 : 0);
     fprintf(f, "rumble = %d\nunfocused = %d\n", g_cfg.rumble, g_cfg.unfocused);
+    static const char *const curves[] = {"game", "modern", "linear"}, *const boosts[] = {"game", "fast", "off"};
+    fprintf(f, "look_speed_x = %d\nlook_speed_y = %d\nlook_curve = %s\nlook_boost = %s\n", g_cfg.look_x, g_cfg.look_y,
+            curves[g_cfg.look_curve], boosts[g_cfg.look_boost]);
     fprintf(f, "hit_marker = %d\ngrenade_warning = %d\nammo_warning = %d\n", g_cfg.hit_marker ? 1 : 0,
             g_cfg.grenade_warning ? 1 : 0, g_cfg.ammo_warning ? 1 : 0);
     fprintf(f, "pad_layout = %s\n", g_cfg.pad_cod ? "cod" : "game");

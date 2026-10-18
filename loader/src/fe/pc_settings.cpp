@@ -81,8 +81,8 @@ template <size_t N> int nearest(const float (&list)[N], float v)
 // Settings presets (AUDIO AND GAME > SETTINGS PRESET): the port's defaults, or the original game with every port
 // addition off (HUD extras, crosshair, sprint, automatic health pack, hold to aim, faster reloads, grenade cooking,
 // skipping any movie, weapon slot keys, muting in the background, the port's controller layout) and the game's own
-// behaviour back (reload blur, aim assist, 70 degree field of view, full vibration). Picture settings are not part of
-// either. The row shows CUSTOM when the settings match neither.
+// behaviour back (reload blur, aim assist, 70 degree field of view, full vibration, the game's stick look). Picture
+// settings are not part of either. The row shows CUSTOM when the settings match neither.
 struct Preset {
     int crosshair;
     float sprint, autoheal, reload_speed, fov;
@@ -90,10 +90,11 @@ struct Preset {
         grenade_warning, ammo_warning, pad_cod, pad_southpaw;
     int unfocused, rumble;
     bool weapon_keys; // 1 and 2 on WEAPON SLOT 1 / 2
+    int look_x, look_y, look_curve, look_boost; // controller look (black-config.exe)
 };
 const Preset kPresets[2] = {
-    {0, 1.5f, 0.0f, 1.5f, 70.0f, false, true, true, false, true, true, false, true, true, true, true, false, 1, 100, true},
-    {0, 0.0f, 0.0f, 1.0f, 70.0f, false, true, false, true, false, false, false, false, false, false, false, false, 0, 100, false},
+    {0, 1.5f, 0.0f, 1.5f, 70.0f, false, true, true, false, true, true, false, true, true, true, true, false, 1, 100, true, 100, 175, 1, 1},
+    {0, 0.0f, 0.0f, 1.0f, 70.0f, false, true, false, true, false, false, false, false, false, false, false, false, 0, 100, false, 100, 100, 0, 0},
 };
 
 bool weapon_keys_set()
@@ -111,7 +112,8 @@ bool preset_matches(const Preset &p)
            g_cfg.enemy_markers == p.enemy_markers && g_cfg.hit_marker == p.hit_marker &&
            g_cfg.grenade_warning == p.grenade_warning && g_cfg.ammo_warning == p.ammo_warning && g_cfg.pad_cod == p.pad_cod &&
            g_cfg.pad_southpaw == p.pad_southpaw && g_cfg.unfocused == p.unfocused && g_cfg.rumble == p.rumble &&
-           weapon_keys_set() == p.weapon_keys;
+           weapon_keys_set() == p.weapon_keys && g_cfg.look_x == p.look_x && g_cfg.look_y == p.look_y && g_cfg.look_curve == p.look_curve &&
+           g_cfg.look_boost == p.look_boost;
 }
 
 int preset_get()
@@ -144,6 +146,10 @@ void preset_set(int i)
     g_cfg.pad_southpaw = p.pad_southpaw;
     g_cfg.unfocused = p.unfocused;
     g_cfg.rumble = p.rumble;
+    g_cfg.look_x = p.look_x;
+    g_cfg.look_y = p.look_y;
+    g_cfg.look_curve = p.look_curve;
+    g_cfg.look_boost = p.look_boost;
     bindings::set_key(bindings::action_index("weapon_1"), 0, p.weapon_keys ? '1' : 0);
     bindings::set_key(bindings::action_index("weapon_2"), 0, p.weapon_keys ? '2' : 0);
 }

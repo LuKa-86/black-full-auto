@@ -22,6 +22,15 @@
 // them: rate = angle / (speed * frame time), deflection = rate ^ (1 / curve exponent +0xC8), clamped to 1 and
 // smoothed a little. +0xD8 has the yaw rate's sign, +0xDC the opposite of the pitch rate's (as the game
 // stores it). Later readers in the frame are the weapon sway; the values are rebuilt from the pad next frame.
+//
+// Controller look settings (black-config.exe; look_* in black.ini). The game's stick turns at most 80 degrees a
+// second (+0xB8) and looks up and down at 25 (+0xBC), squares the deflection (+0xC8 = 2, so half way turns at a
+// quarter speed), and only past 0.98 deflection (h^2 + v^2) adds a boost +0xD0 that grows by deflection * frame time
+// * +0xC0 (1) up to +0xC4 (0.5) before the curve: 2.25 times the speed after half a second. Heavy next to a modern
+// shooter. The stick share of each step is scaled by look_x / look_y in the two thunks; the two loads of the exponent
+// (fld [esi+0xC8] at 0x1BD5A1 and 0x1BD5F3) read g_ml_curve instead (1.5 or 1 for the modern and linear curves); and
+// the boost is written into the controller after each update: up to (2.25 ^ (1 / curve)) - 1, so full tilt still
+// ends at 2.25 times, built over 0.5 s (the game's) or 0.2 s, or none. Mouse look is not changed by any of this.
 #include "input/mouselook.h"
 
 #include "common.h"
@@ -34,18 +43,51 @@ extern "C" {
 float g_ml_pending_yaw, g_ml_pending_pitch; // degrees for the next view update (set at each pad poll)
 float g_ml_used_yaw, g_ml_used_pitch;       // what the last view update used (for the weapon sway)
 float g_ml_xmm7;                            // scratch save
+float g_ml_look_x = 1.0f, g_ml_look_y = 1.0f; // controller look speed factors (look_x / look_y)
+float g_ml_curve = 2.0f;                    // the stick response exponent the game uses (its own: +0xC8)
 void __cdecl ml_sway(uint8_t *ctrl);
 }
 
 namespace {
 
-bool g_installed;
+bool g_installed, g_curve_patched;
 std::atomic<uint32_t> g_play_frame; // the frame of the last player update (ml_sway runs once in each)
+
+// The look settings for the next update (see the top of the file); ctrl = the player controller.
+void look_update(uint8_t *ctrl)
+{
+    g_ml_look_x = g_cfg.look_x / 100.0f;
+    g_ml_look_y = g_cfg.look_y / 100.0f;
+    float game_curve = *(const float *)(ctrl + 0xC8);
+    g_ml_curve = !g_curve_patched || g_cfg.look_curve == 0 ? game_curve : g_cfg.look_curve == 1 ? 1.5f : 1.0f;
+    static bool touched; // the game's own boost stays untouched until a setting differs (the values below are its own)
+    if (g_cfg.look_curve == 0 && g_cfg.look_boost == 0 && !touched) return;
+    touched = true;
+    float boost = g_cfg.look_boost == 2 ? 0.0f : powf(2.25f, 1.0f / g_ml_curve) - 1.0f;
+    float ramp = g_cfg.look_boost == 1 ? 0.2f : 0.5f;           // seconds to the full boost
+    *(float *)(ctrl + 0xC4) = boost;
+    *(float *)(ctrl + 0xC0) = boost > 0.0f ? boost / ramp : 1.0f;
+}
+
+// The power function FUN_000a3580 (x87: st1 = base, st0 = exponent; returns base ^ exponent) at the four calls after
+// the exponent loads. The game passes the signed deflection and takes the absolute value of the result, which only
+// works for whole exponents (a negative base to the power 1.5 is NaN), so the base is made positive first.
+__declspec(naked) void pow_thunk()
+{
+    __asm {
+        fxch st(1)
+        fabs
+        fxch st(1)
+        mov eax, 0x000A3580
+        jmp eax
+    }
+}
 
 // 0x1BD6A8: addss xmm3, [esi+0x18]  (xmm3 = this frame's stick yaw step; xmm2 = zoom factor)
 __declspec(naked) void yaw_thunk()
 {
     __asm {
+        mulss xmm3, dword ptr [g_ml_look_x]
         addss xmm3, dword ptr [esi + 0x18]
         movss dword ptr [g_ml_xmm7], xmm7
         movss xmm7, dword ptr [g_ml_pending_yaw]
@@ -62,6 +104,7 @@ __declspec(naked) void yaw_thunk()
 __declspec(naked) void pitch_thunk()
 {
     __asm {
+        mulss xmm0, dword ptr [g_ml_look_y]
         addss xmm0, dword ptr [esi + 0x1C]
         movss dword ptr [g_ml_xmm7], xmm7
         movss xmm7, dword ptr [g_ml_pending_pitch]
@@ -115,6 +158,33 @@ void install_mouselook_patches()
     }
     g_installed = true;
     logf("mouselook: view angles take mouse input directly (FUN_001bd3f0); weapon sway follows it (0x1ECF76)");
+    static const uint8_t kCurveLoad[6] = {0xD9, 0x86, 0xC8, 0x00, 0x00, 0x00}; // fld dword ptr [esi+0xC8]
+    const uint32_t curve_sites[2] = {0x001BD5A1, 0x001BD5F3};
+    const uint32_t pow_calls[4] = {0x001BD5A9, 0x001BD5CC, 0x001BD5FB, 0x001BD61E};
+    auto call_target = [](uint32_t a) { return a + 5 + *(const int32_t *)(uintptr_t)(a + 1); };
+    for (uint32_t a : curve_sites)
+        if (memcmp((const void *)(uintptr_t)a, kCurveLoad, 6) != 0) {
+            logf("mouselook: code at 0x%08x does not match this build; the stick response curve stays the game's", a);
+            return;
+        }
+    for (uint32_t a : pow_calls)
+        if (*(const uint8_t *)(uintptr_t)a != 0xE8 || call_target(a) != 0x000A3580) {
+            logf("mouselook: code at 0x%08x does not match this build; the stick response curve stays the game's", a);
+            return;
+        }
+    for (uint32_t a : pow_calls) {
+        int32_t rel = (int32_t)((uintptr_t)pow_thunk - (a + 5));
+        memcpy((uint8_t *)(uintptr_t)a + 1, &rel, 4);
+    }
+    for (uint32_t a : curve_sites) { // fld dword ptr [g_ml_curve]
+        auto *code = (uint8_t *)(uintptr_t)a;
+        code[1] = 0x05;
+        uint32_t addr = (uint32_t)(uintptr_t)&g_ml_curve;
+        memcpy(code + 2, &addr, 4);
+    }
+    g_curve_patched = true;
+    logf("mouselook: controller look speed %d%% / %d%%, curve %d, boost %d", g_cfg.look_x, g_cfg.look_y,
+         g_cfg.look_curve, g_cfg.look_boost);
 }
 
 bool mouselook_installed() { return g_installed; }
@@ -127,7 +197,8 @@ extern "C" void __cdecl ml_sway(uint8_t *ctrl)
     static float sh, sv; // smoothed deflections
     auto f = [&](uint32_t off) { return *(const float *)(ctrl + off); };
     float dt = *(const float *)(uintptr_t)(*(const uint32_t *)(uintptr_t)0x002D45D4 + 0x1C);
-    float curve = f(0xC8) > 0.1f ? f(0xC8) : 1.0f;
+    look_update(ctrl);
+    float curve = g_ml_curve > 0.1f ? g_ml_curve : 1.0f;
     auto deflection = [&](float deg, float speed) {
         if (speed <= 0.0f || dt <= 0.0f || deg == 0.0f) return 0.0f;
         float r = fabsf(deg) / (speed * dt);

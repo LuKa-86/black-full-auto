@@ -87,6 +87,9 @@ struct Config {
     bool pad_cod = true;       // controller: the port's layout, pad_<action> in black.ini (input/bindings.cpp); false = the game's own
     bool pad_southpaw = false; // the port's layout with the sticks swapped (pad_sticks = southpaw)
     int rumble = 100;          // controller vibration strength in percent, 0 = off (input/xinput.cpp)
+    int look_x = 100, look_y = 175; // controller look speed in percent of the game's, horizontal / vertical (input/mouselook.cpp)
+    int look_curve = 1;        // stick response: 0 the game's (squared), 1 modern (power 1.5), 2 linear
+    int look_boost = 1;        // extra turn speed at full tilt: 0 the game's (builds over 0.5 s), 1 fast (0.2 s), 2 off
     int unfocused = 1;         // window in the background: 0 carry on, 1 mute, 2 mute and pause the game (input/xinput.cpp)
     bool hit_marker = true;    // a mark on the crosshair when the player's shot or grenade hurts an enemy (d3d/overlay.cpp)
     bool grenade_warning = true; // an arrow towards a live grenade close to the player (d3d/overlay.cpp)
