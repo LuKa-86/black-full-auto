@@ -1,18 +1,21 @@
 # Packs the built loader into a release zip: dist\black-pc-<version>-win32.zip with one folder, port\, holding
-# black.exe, blackrt.dll, README.md and LICENSE.txt. Extracted next to the user's game
+# black.exe, blackrt.dll, black-config.exe, README.md and LICENSE.txt. Extracted next to the user's game
 # folder, port\black.exe finds ..\game and keeps what it writes in port\ (savedata\, black.ini, black.log, cache\).
 # Nothing game-derived: the build's black.exe has no icon (tools\set_exe_icon.py only stamps local copies).
 # blackrt.pdb and blackrt.map go into a separate -symbols zip, kept to read crash reports of that build.
-# Build first: cmake --build loader\build\win32 --config RelWithDebInfo
-param([string]$Config = 'RelWithDebInfo')
+# Build first: cmake --build loader\build\win32 --config RelWithDebInfo (or -Build win32-vs2022 for that preset).
+# BLACK: Full Auto releases are named black-full-auto-<Release>-win32 (-Release; the loader's own version, from
+# CMakeLists.txt, stays the one of the black-pc release the fork is based on).
+param([string]$Config = 'RelWithDebInfo', [string]$Build = 'win32', [string]$Release = '1.0')
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $cmake = Get-Content "$root\loader\CMakeLists.txt" -Raw
 if ($cmake -notmatch 'project\(\S+ VERSION (\d+\.\d+\.\d+)') { throw 'no project VERSION in loader\CMakeLists.txt' }
 $version = $Matches[1]
-$bin = "$root\loader\build\win32\$Config"
-$name = "black-pc-$version-win32"
+$bin = "$root\loader\build\$Build\$Config"
+$name = "black-full-auto-$Release-win32"
+"BLACK: Full Auto $Release (black-pc $version based)"
 $dist = "$root\dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
 
@@ -21,7 +24,7 @@ $stage = Join-Path $env:TEMP "$name-$PID"
 $sym = "$stage-symbols"
 $port = "$stage\port"
 New-Item -ItemType Directory -Force $port, $sym | Out-Null
-Copy-Item "$bin\black.exe", "$bin\blackrt.dll" $port
+Copy-Item "$bin\black.exe", "$bin\blackrt.dll", "$bin\black-config.exe" $port
 Copy-Item "$root\README.md" "$port\README.md"
 Copy-Item "$root\LICENSE" "$port\LICENSE.txt"
 Copy-Item "$bin\blackrt.pdb", "$bin\blackrt.map" $sym

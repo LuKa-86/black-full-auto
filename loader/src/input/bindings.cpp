@@ -19,8 +19,11 @@
 #include "input/bindings.h"
 
 #include "common.h"
+#include "input/action_list.h"
 #include "d3d/host.h"
+#include "input/cheats.h"
 #include "input/mouselook.h"
+#include "input/player_extras.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -32,35 +35,34 @@
 namespace bindings {
 namespace {
 
-// Names as on the game's controls screen (FE_ACTION_* strings; the tables built at 0x214820 pair them with the
-// binding-table index). The movement axes are split into their stick halves.
-const Action kActions[] = {
-    {"run_forward", L"Run forward", 1, {'W', 0}},
-    {"run_back", L"Run back", 2, {'S', 0}},
-    {"step_left", L"Sidestep left", 3, {'A', 0}},
-    {"step_right", L"Sidestep right", 4, {'D', 0}},
-    {"fire", L"Fire", 9, {VK_LBUTTON, 0}},
-    {"aim", L"Aim", 16, {VK_RBUTTON, 0}},
-    {"reload", L"Reload", 11, {'R', 0}},
-    {"use", L"Action (use, pick up)", 13, {'E', 0}},
-    {"crouch", L"Crouch", 12, {'C', 0}},
-    {"grenade", L"Grenade", 27, {'G', 0}},
-    {"melee", L"Melee", 32, {'F', 0}},
-    {"next_weapon", L"Next weapon", 14, {KEY_WHEEL_DOWN, 0}},
-    {"prev_weapon", L"Previous weapon", 15, {KEY_WHEEL_UP, 0}},
-    {"firing_mode", L"Change firing mode", 30, {'Z', 0}},
-    {"suppressor", L"Toggle suppressor", 31, {'Q', 0}},
-    {"health_pack", L"Health pack", 33, {'X', 0}},
-    {"music", L"Next music track", 34, {0, 0}},
-    {"turn_left", L"Turn left", 5, {0, 0}},
-    {"turn_right", L"Turn right", 6, {0, 0}},
-    {"look_up", L"Look up", 7, {0, 0}},
-    {"look_down", L"Look down", 8, {0, 0}},
-    {"pause", L"Pause", 25, {VK_ESCAPE, 0}},
-    {"objectives", L"Show objectives", 36, {VK_SPACE, 0}},
-};
-constexpr int kCount = sizeof kActions / sizeof kActions[0];
-constexpr int kPause = 21;
+constexpr int kCount = kActionCount;
+constexpr int kCheat = kCount - 1;
+constexpr int kSprint = 4;
+constexpr int kAim = 6;
+constexpr int kGrenade = 10;
+constexpr int kPause = 22;
+constexpr int kWeapon1 = 24;
+
+// The port's controller layout (`pad_layout = cod`; buttons, modes and defaults in input/action_list.h). The config
+// tool black-config.exe edits it in black.ini.
+PadBind g_pad[kCount][kPadSlots];
+bool g_pad_set;
+
+void ensure_pad_defaults()
+{
+    if (g_pad_set) return;
+    g_pad_set = true;
+    for (int i = 0; i < kCount; i++) parse_pad(pad_default(i), g_pad[i]);
+}
+
+// Pad button b down in the Xbox pad state (read_pad: analog A B X Y BLACK=RB WHITE=LB LT RT, buttons D-pad 1/2/4/8,
+// START 0x10, BACK 0x20, L3 0x40, R3 0x80).
+bool pad_button(int b, uint16_t buttons, const uint8_t analog[8])
+{
+    static const int8_t kAnalog[8] = {0, 1, 2, 3, 5, 4, 6, 7};
+    static const uint16_t kBits[8] = {0x40, 0x80, 0x10, 0x20, 0x01, 0x02, 0x04, 0x08};
+    return b < 8 ? analog[kAnalog[b]] > 64 : (buttons & kBits[b - 8]) != 0;
+}
 
 uint16_t g_keys[kCount][kSlots];
 bool g_keys_set; // defaults applied
@@ -124,6 +126,67 @@ std::bitset<0x102> g_script;     // --press k:Name, this poll only
 bool g_was_play;
 bool g_freed_by_esc; // the pause key (or Esc in a menu) let go of the mouse: take it again when play starts
 bool g_release_was_down;
+std::atomic<bool> g_sprint_down; // the sprint key at the last poll in play
+std::atomic<uint64_t> g_forced;  // game actions (bit = binding index) to press at the next poll in play
+std::atomic<bool> g_grenade_down; // the grenade key at the last poll in play (held back while cooking)
+
+// The aim key. Player input FUN_001ec450 (ebx = player controller) keeps the aim state in ctrl +0x45. The aim action
+// (binding +0x40) sets it while held when the profile's aim toggle ctrl +0x103 (copied from game +0x20166 at level
+// start, 0x1D566E; set in a default profile) and the weapon's flag [[[ctrl+0x8C]+0x29C]+0xEC]+0xC0 are both clear;
+// otherwise each press toggles it (edge via +0x104), and a press the weapon is not ready for (switching, firing,
+// reloading) is lost. So when the game toggles, the port decides the state it wants and presses the aim input once
+// at a time until the state matches:
+// - hold to aim (PC SETTINGS > CONTROLS > AIM, `aim_hold`): aiming while the key is held;
+// - toggle (the game's): each press of the key asks for the other state, retried for half a second, so a click while
+//   the weapon is busy still takes;
+// - starting to sprint (player_extras.cpp) drops the aim in both modes; aiming again while sprinting aims.
+// The pad's LT in the Call of Duty layout always aims while held (pad_lt).
+bool aim_input(bool key, bool sprint_key, bool pad_lt)
+{
+    uint8_t *ctrl = player_controller();
+    if (!ctrl) return key || pad_lt;
+    static int pad_release; // polls left to bring the aim back down after LT was let go
+    if (pad_lt) pad_release = 60;
+    else if (pad_release && !ctrl[0x45]) pad_release = 0; // not aiming any more: done
+    else if (pad_release) pad_release--;
+    bool pad_hold = pad_lt || pad_release > 0; // LT held, or let go and still aiming: hold rules
+    if (pad_hold) key = g_cfg.aim_hold ? key || pad_lt : pad_lt;
+    bool sprinting = sprint_key && g_cfg.sprint > 1.0f && *(const float *)(ctrl + 0xE4) > 0.1f && !ctrl[0x40];
+    uint32_t player = *(const uint32_t *)(ctrl + 0x8C);
+    uint32_t stance = player ? *(const uint32_t *)(uintptr_t)(player + 0x29C) : 0;
+    uint32_t weapon = stance ? *(const uint32_t *)(uintptr_t)(stance + 0xEC) : 0;
+    bool toggles = ctrl[0x103] || (weapon && *(const uint8_t *)(uintptr_t)(weapon + 0xC0));
+    bool aiming = ctrl[0x45] != 0;
+    static bool key_was, sprint_was, sprint_owns;
+    static int target = -1, expire, wait; // target: the wanted state (-1 none); wait: polls before comparing again
+    bool edge = key && !key_was;
+    key_was = key;
+    // Whichever was pressed last wins, as in Call of Duty: starting to sprint drops the aim, pressing aim while
+    // sprinting aims (and the sprint stops, player_extras.cpp does not sprint while aiming).
+    bool sprint_start = sprinting && !sprint_was;
+    sprint_was = sprinting;
+    if (sprint_start) sprint_owns = true;
+    if (edge) sprint_owns = false;
+    bool blocked = sprinting && sprint_owns;
+    if (!toggles) return key && !blocked; // the game aims while the input is held
+    bool hold = g_cfg.aim_hold || pad_hold;
+    if (hold) target = key && !blocked;
+    else if (sprint_start) {
+        if (aiming || target == 1) target = 0, expire = 30;
+    } else if (edge) target = !aiming, expire = 30;
+    if (!hold && target >= 0 && --expire <= 0) target = -1;
+    if (target < 0) return false;
+    if (target == (int)aiming) {
+        if (!hold) target = -1;
+        return false;
+    }
+    if (wait) {
+        wait--;
+        return false;
+    }
+    wait = 5; // pressed for this poll, then released: one edge
+    return true;
+}
 
 // Menu keys -> the menus' input ids (FEInputId); held arrows repeat like the game's own pad input.
 struct MenuKey {
@@ -221,6 +284,24 @@ void press_channel(int ch, Pad &p)
     else if (ch < 24) p.analog[ch - 16] = 255;
 }
 
+// Weapon slot keys: the inventory (player +0x278: +0x20 slot array of weapon users, +0x42 slot count, +0x43 current
+// slot, +0x38 swap state) has two slots, so going to the other one is one press of "next weapon" (action 14). Nothing
+// when that slot is current or empty, or a swap is under way.
+void select_slot(int slot)
+{
+    uint8_t *ctrl = player_controller();
+    uint32_t player = ctrl ? *(const uint32_t *)(ctrl + 0x8C) : 0;
+    if (!player) return;
+    uint32_t inv = player + 0x278;
+    int count = *(const uint8_t *)(uintptr_t)(inv + 0x42), cur = *(const uint8_t *)(uintptr_t)(inv + 0x43);
+    uint32_t slots = *(const uint32_t *)(uintptr_t)(inv + 0x20);
+    if (slot >= count || slot == cur || !slots || !*(const uint32_t *)(uintptr_t)(slots + 4 * slot) ||
+        *(const uint32_t *)(uintptr_t)(inv + 0x38))
+        return;
+    g_forced |= 1ull << 14;
+    logf("[input] weapon slot %d: next weapon (from slot %d)", slot + 1, cur + 1);
+}
+
 } // namespace
 
 const Action *actions(int *count)
@@ -278,6 +359,19 @@ std::wstring key_name(uint16_t k)
 
 bool load_ini(const char *k, const char *value)
 {
+    if (strncmp(k, "pad_", 4) == 0) {
+        if (strcmp(k, "pad_sticks") == 0) {
+            g_cfg.pad_southpaw = _stricmp(value, "southpaw") == 0;
+            return true;
+        }
+        ensure_pad_defaults();
+        int i = action_index(k + 4);
+        PadBind b[kPadSlots];
+        if (i >= 0 && i != kCheat && parse_pad(value, b)) memcpy(g_pad[i], b, sizeof b);
+        else if (i >= 0) logf("[input] black.ini: %s = %s: not a pad button list (A B X Y LB RB LT RT L3 R3 START BACK "
+                              "DUP DDOWN DLEFT DRIGHT, .tap / .hold)", k, value);
+        return true;
+    }
     if (strncmp(k, "key_", 4) != 0) return false;
     ensure_defaults();
     for (int i = 0; i < kCount; i++) {
@@ -301,6 +395,10 @@ void save_ini(FILE *f)
         if (g_keys[i][1]) v += "," + ini_name(g_keys[i][1]);
         fprintf(f, "key_%s = %s\n", kActions[i].ini, v.c_str());
     }
+    ensure_pad_defaults();
+    fprintf(f, "pad_sticks = %s\n", g_cfg.pad_southpaw ? "southpaw" : "normal");
+    for (int i = 0; i < kCount; i++)
+        if (i != kCheat) fprintf(f, "pad_%s = %s\n", kActions[i].ini, pad_text(g_pad[i]).c_str());
 }
 
 void script_hold(const std::string &name)
@@ -316,6 +414,15 @@ int take_menu_input()
 }
 
 bool menu_select_held() { return g_menu_select; }
+
+bool sprint_held() { return g_sprint_down; }
+
+void press_game_action(int game)
+{
+    if (game >= 0 && game < 64) g_forced |= 1ull << game;
+}
+
+bool grenade_held() { return g_grenade_down; }
 
 bool in_play()
 {
@@ -353,14 +460,94 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
         return !g_stale[k];
     };
 
+    // The cheat menu (input/cheats.cpp): its key opens and closes it in play; while it is open, arrows / Enter / Esc
+    // drive it and nothing reaches the game. Keys still down when it closes wait for a release.
+    {
+        bool cheat_key = false;
+        for (int s = 0; s < kSlots; s++) cheat_key |= held(g_keys[kCheat][s]);
+        static bool cheat_was;
+        if (play && cheat_key && !cheat_was) cheats::toggle_menu();
+        cheat_was = cheat_key;
+        if (!play && cheats::menu_open()) cheats::toggle_menu();
+        if (cheats::menu_open()) {
+            static const uint16_t kKeys[6] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE};
+            static bool was[6];
+            for (int i = 0; i < 6; i++) {
+                bool h = raw_held(kKeys[i], focus, 0);
+                if (h && !was[i]) cheats::menu_key(i + 1);
+                was[i] = h;
+            }
+            if (!cheats::menu_open()) // closed now: the keys still down must not act in the game
+                for (int i = 0; i < kCount; i++)
+                    for (int s = 0; s < kSlots; s++)
+                        if (raw_held(g_keys[i][s], focus, mouse)) g_stale[g_keys[i][s]] = true;
+            if (!cheats::menu_open())
+                for (uint16_t k : kKeys)
+                    if (raw_held(k, focus, 0)) g_stale[k] = true;
+            buttons = 0;
+            memset(analog, 0, 8);
+            lx = ly = rx = ry = 0;
+            g_script.reset();
+            return;
+        }
+    }
+
     Pad p;
     const int32_t *table = game_table();
-    bool pause_down = false;
+    bool pause_down = false, sprint_down = false, grenade_down = false;
+    bool sprint_key = false;
+    for (int s = 0; s < kSlots; s++) sprint_key |= held(g_keys[kSprint][s]);
+    // The port's controller layout (`pad_layout = cod`, the default; g_pad, see above): in play the pad's buttons are
+    // turned into actions like keys, through the game's binding table; the sticks stay as they are (left move, right
+    // look; swapped with pad_sticks = southpaw). Menus, pauses and cutscenes get the pad unchanged.
+    bool pad_down[kCount] = {};
+    if (play && table && g_cfg.pad_cod) {
+        ensure_pad_defaults();
+        static ULONGLONG since[kPadButtons]; // when each button went down (0 = up)
+        bool tapped[kPadButtons] = {}, long_held[kPadButtons] = {}, now_down[kPadButtons] = {};
+        ULONGLONG t = GetTickCount64();
+        for (int b = 0; b < kPadButtons; b++) {
+            now_down[b] = pad_button(b, buttons, analog);
+            if (now_down[b]) {
+                if (!since[b]) since[b] = t;
+                long_held[b] = t - since[b] >= kTapMs;
+            } else {
+                tapped[b] = since[b] && t - since[b] < kTapMs; // released quickly: acts for this poll
+                since[b] = 0;
+            }
+        }
+        for (int i = 0; i < kCount; i++)
+            for (const PadBind &pb : g_pad[i]) {
+                if (pb.button < 0) continue;
+                pad_down[i] |= pb.mode == kTap ? tapped[pb.button] : pb.mode == kHold ? long_held[pb.button] : now_down[pb.button];
+            }
+        buttons = 0; // the game sees only what the layout presses
+        memset(analog, 0, 8);
+    }
+    if (play && g_cfg.pad_southpaw) {
+        std::swap(lx, rx);
+        std::swap(ly, ry);
+    }
+    sprint_key |= pad_down[kSprint];
     for (int i = 0; play && i < kCount && table; i++) {
         bool down = false;
         for (int s = 0; s < kSlots; s++) down |= held(g_keys[i][s]);
+        if (i == kAim) down = aim_input(down, sprint_key, pad_down[kAim]);
+        else down |= pad_down[i];
+        if (i == kWeapon1 || i == kWeapon1 + 1) {
+            static bool was[2];
+            if (down && !was[i - kWeapon1]) select_slot(i - kWeapon1);
+            was[i - kWeapon1] = down;
+            continue;
+        }
+        if (i == kGrenade && g_cfg.grenade_cook) { // player_extras.cpp throws on release (press_game_action)
+            grenade_down = down;
+            continue;
+        }
         if (!down) continue;
         if (i == kPause) pause_down = true;
+        if (i == kSprint) sprint_down = true;
+        if (kActions[i].game < 0) continue; // the port's own action
         int ch = table[kActions[i].game];
         if (ch < 0 || ch >= 24) {
             static std::bitset<kCount> told;
@@ -369,6 +556,14 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
             continue;
         }
         press_channel(ch, p);
+    }
+    g_sprint_down = sprint_down;
+    g_grenade_down = grenade_down;
+    uint64_t forced = g_forced.exchange(0);
+    for (int a = 0; play && table && forced && a < 37; a++) {
+        if (!(forced >> a & 1)) continue;
+        int ch = table[a];
+        if (ch >= 0 && ch < 24) press_channel(ch, p);
     }
     bool menu_esc = false;
     int input = 0;

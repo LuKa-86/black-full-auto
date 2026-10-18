@@ -3,7 +3,7 @@
 // Xbox code addresses its KPCR through fs. Windows keeps its TEB in fs and needs it, so instead of
 // swapping fs, the loader rewrites the few fs:[disp32] instructions that read Xbox-only KPCR fields so
 // they read Windows TLS slots (TEB TlsSlots at fs:[0xE10 + 4*i]) instead. fs:[0] (SEH chain) has the same
-// meaning on both and is left alone. Fields remapped (from the disassembly of this XBE, see NOTES.md):
+// meaning on both and is left alone. Fields remapped (from the disassembly of this XBE, see docs/NOTES.md):
 //   fs:[0x04]  NtTib.StackBase, used by XAPI as the TLS array  -> slot: TlsData + TlsDataSize
 //   fs:[0x20]  KPCR.Prcb                                       -> slot: fake KPRCB
 //   fs:[0x24]  KPCR.Irql (byte)                                -> slot: current IRQL

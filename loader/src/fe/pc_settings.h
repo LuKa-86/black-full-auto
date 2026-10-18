@@ -6,12 +6,15 @@
 
 namespace pcset {
 
-// a page of rows (container entry: page in lower case)
+// a page of rows (container entry: page in lower case). The first four are the PC SETTINGS menu's rows (the game's
+// Options screen it is copied from has four); the others are opened from a link row on their parent's page.
 struct Group {
     const char *page, *title;
     std::vector<int> rows;
+    const char *parent = nullptr; // the page Back returns to (nullptr: the PC SETTINGS menu)
 };
 const std::vector<Group> &groups();
+constexpr int kMenuGroups = 4;
 
 int count();                        // rows; row n shows its value in &PC_V<n> (fe/vars.h)
 const char *label(int n);           // the row's caption
@@ -23,6 +26,6 @@ bool is_slider(int n);              // a bullet bar (26 positions) instead of a 
 int slider_pos(int n);              // the slider's position, 0-100 (also given to the page as externObject.FEPCS<n>)
 void slide(int n, float pos);       // a slider moved to pos (0-100)
 bool restart_only(int n);           // applies at the next start: on the main menu's pages, not the pause menu's
-const char *link(int n);            // a row that opens a page (KEY BINDINGS), or nullptr
+const char *link(int n);            // a row that opens a page (KEY BINDINGS, a sub-page), or nullptr
 
 } // namespace pcset

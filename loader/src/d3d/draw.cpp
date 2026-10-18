@@ -15,6 +15,8 @@
 
 #include <wincodec.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <unordered_map>
 #include <vector>
@@ -892,6 +894,25 @@ const uint8_t *scale_rhw(const DrawCtx &ctx, const void *data, uint32_t first, u
     return g_rhw.data() - (size_t)first * stride;
 }
 
+// The game's crosshair is a small quad (8 x 10.7 in 640 x 480 units) centred on (320, 240), drawn with the HUD's
+// sprites (FUN_001355b0 batches them: DrawVerticesUP, quad list, vertex program 0x1480b71, positions in screen
+// units). With the port's crosshair on (draw_crosshair in device.cpp) such quads are collapsed to a point, so only
+// the port's shows; larger centred sprites (scope overlays) are left alone.
+void hide_game_crosshair(uint32_t prim, uint32_t count, uint8_t *verts, uint32_t stride)
+{
+    if (g_cfg.crosshair <= 0 || prim != 8 || count % 4) return; // 8 = Xbox D3DPT_QUADLIST
+    for (uint32_t q = 0; q < count; q += 4) {
+        float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+        for (uint32_t i = 0; i < 4; i++) {
+            const float *p = (const float *)(verts + (size_t)(q + i) * stride);
+            x0 = std::min(x0, p[0]), x1 = std::max(x1, p[0]), y0 = std::min(y0, p[1]), y1 = std::max(y1, p[1]);
+        }
+        if (x1 - x0 > 12 || y1 - y0 > 14 || std::fabs((x0 + x1) * 0.5f - 320) > 0.6f || std::fabs((y0 + y1) * 0.5f - 240) > 0.6f)
+            continue;
+        for (uint32_t i = 1; i < 4; i++) memcpy(verts + (size_t)(q + i) * stride, verts + (size_t)q * stride, 8);
+    }
+}
+
 // ---- HLE draw functions ----
 
 void __stdcall D3DDevice_DrawVerticesUP(uint32_t PrimitiveType, uint32_t VertexCount, const void *pVertexStreamZeroData,
@@ -904,6 +925,7 @@ void __stdcall D3DDevice_DrawVerticesUP(uint32_t PrimitiveType, uint32_t VertexC
     if (!begin_draw(ctx)) return;
     if (ctx.path == Path::Prog) {
         uint32_t stride = convert_vertices(ctx.vs, 0, VertexCount, (const uint8_t *)pVertexStreamZeroData, VertexStreamZeroStride);
+        hide_game_crosshair(PrimitiveType, VertexCount, (uint8_t *)g_conv.data(), stride);
         debug_draw("DrawVerticesUP", ctx, PrimitiveType, VertexCount, g_conv.data(), stride / 4);
         set_decl(host3d::dev(), decl_for(ctx.vs));
         draw_up(PrimitiveType, VertexCount, g_conv.data(), stride);

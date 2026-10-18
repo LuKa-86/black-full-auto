@@ -568,7 +568,7 @@ void main_menu_quit(Movie &mv, int textanim, float dy, int reveal, uint32_t bar_
 void pc_menu(Movie &mv)
 {
     const auto &groups = pcset::groups();
-    if (groups.size() != 4) throw Error("the PC SETTINGS menu has four rows");
+    if (groups.size() < pcset::kMenuGroups || pcset::kMenuGroups != 4) throw Error("the PC SETTINGS menu has four rows");
     literal(mv, mv.character(18), "PC SETTINGS");
     const int texts[4] = {14, 11, 8, 5}; // rows top to bottom: ControllerSetup, SoundSetup, PictureSetup, Playerprofile
     for (int i = 0; i < 4; i++) literal(mv, mv.character(texts[i]), groups[i].title);
@@ -1055,10 +1055,10 @@ bool fe_build_pages(const std::wstring &game_dir, const std::wstring &out_root)
         int index = 0;
         for (const pcset::Group &g : pcset::groups()) {
             Movie page(sound);
-            choice_page(page, g.title, group_rows(g, false), "PCSettings", true, index++);
+            choice_page(page, g.title, group_rows(g, false), g.parent ? g.parent : "PCSettings", true, index++);
             add_movie(c, lower(g.page), page.build());
             for (int n : g.rows)
-                if (pcset::link(n)) controls = g.page;
+                if (pcset::link(n) && !strcmp(pcset::link(n), kBindings)) controls = g.page;
         }
         Movie keys(sound);
         choice_page(keys, "KEY BINDINGS", key_rows(), controls, false, 100);

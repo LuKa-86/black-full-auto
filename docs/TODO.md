@@ -42,6 +42,28 @@ Open work on the BLACK PC port. Findings and addresses live in `NOTES.md`; this 
       credits.
 - [ ] Field of view (PC SETTINGS > VIDEO, `--fov`): feel in play, aiming and scopes (aimed FOV = setting / zoom),
       cutscene transitions back to the player's view; gun and hands at the game's view (reload, weapon switch, melee).
+- [ ] Reload blur off (PC SETTINGS > AUDIO AND GAME, `--no-reload-blur`; 2026-10-17): checked in a test run (pistol
+      reload sharp, original blurred); user to confirm with other weapons.
+- [ ] Sprint (Left Shift, SPRINT SPEED; 2026-10-17): measured 4.5 -> 6.75 m/s at 1.5x in mission 1. User to check the
+      feel, animations and footsteps at sprint speed, and any scripted spot that expects walking pace.
+- [ ] Aim hold / toggle retry / sprint cancels aim, short-click latch (2026-10-17): checked with the pistol in test
+      runs; user to check the sniper rifle and other weapons with the weapon flag +0xC0.
+- [ ] Automatic health pack (2026-10-17): checked with forced low health; user to check in a real fight.
+- [ ] Reload speed (2026-10-17, default 1.5x): checked with the pistol; user to check the shotgun (shell loop,
+      states 5/6), other weapons, and the reload blur's length against the shorter reload.
+- [ ] Hit detection (user: "hit and miss"): short clicks were being dropped (fixed); next look at weapon spread.
+- [ ] Crosshair options (2026-10-17): the game's dot is hidden under a port crosshair, which now stays while aiming;
+      user to check the sniper scope and that nothing else centred disappears.
+- [ ] Health percentage (2026-10-17): checked in widescreen; check 4:3 placement.
+- [ ] Enemy markers (2026-10-17): check against visible enemies (left/right and height), and in later missions.
+- [ ] Grenade cooking (2026-10-17): checked tap, 1.5 s hold, 4 s in the hand (mission failed). User to check the
+      feel and distances in play; the controller's grenade button is not cooked; no menu row (pages full).
+- [ ] Cheat menu (F1, 2026-10-18): god mode, infinite ammo/grenades, refill, weapon select checked in test runs. User
+      to check giving weapons when both slots are full (the current one is dropped), the RPG/M203, and later levels.
+- [ ] Controller Call of Duty layout (2026-10-18): checked with scripted pad presses; user to play with a real pad.
+- [x] Item markers for collectibles and secondary destroy targets: removed at the user's request (2026-10-18); the
+      findings stay in NOTES.md "Item markers".
+- [x] Auto health pack vs manual: the user had pressed near full health, where the game refuses a pack.
 - [ ] Reverb (bin 11 send into an FDN reverb): level and character against the Xbox (`--reverb-gain`).
 
 ## Next

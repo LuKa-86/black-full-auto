@@ -5,7 +5,7 @@ the handoff from the Mac, where the disc was extracted and analysed, to the PC.
 
 ## 0. First session prompt (paste into Claude Code on the PC, with this folder open)
 
-> Read CLAUDE.md, NOTES.md and docs/ROADMAP.md. Run the checks in PC_SETUP.md section 2. Then start Phase 4: create the CMake
+> Read CLAUDE.md, docs/NOTES.md and docs/ROADMAP.md. Run the checks in docs/PC_SETUP.md section 2. Then start Phase 4: create the CMake
 > loader in `loader/` and work through the "First milestone" checklist at the end of the roadmap. Do not commit or git init until I say so.
 
 ## 1. Install (Windows 10/11 x64, a GPU with current drivers)

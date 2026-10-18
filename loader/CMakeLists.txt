@@ -25,6 +25,7 @@ add_library(blackrt SHARED
   src/hooks.cpp
   src/timing.cpp
   src/fov.cpp
+  src/reloadblur.cpp
   src/fe/calls.cpp
   src/fe/vars.cpp
   src/fe/pc_settings.cpp
@@ -34,6 +35,9 @@ add_library(blackrt SHARED
   src/fe/pause_ui.cpp
   src/input/mouselook.cpp
   src/input/autoaim.cpp
+  src/input/player_extras.cpp
+  src/input/hits.cpp
+  src/input/cheats.cpp
   src/input/bindings.cpp
   src/input/movies.cpp
   src/audio/reverb.cpp
@@ -50,6 +54,7 @@ add_library(blackrt SHARED
   src/kernel/k_misc.cpp
   src/d3d/dispatch.cpp
   src/d3d/device.cpp
+  src/d3d/overlay.cpp
   src/d3d/host.cpp
   src/d3d/pushbuf.cpp
   src/d3d/draw.cpp
@@ -77,9 +82,17 @@ target_link_options(blackrt PRIVATE /SAFESEH:NO /MAP) # blackrt.map: port addres
 # blackrt.dll then maps the XBE over this image (headers included) and never returns.
 # A Windows-subsystem program: no console window; started from a command prompt it attaches to that one (main.cpp).
 add_executable(black stub/stub.c)
+add_dependencies(black black-config)
 target_link_libraries(black PRIVATE blackrt kernel32)
 set_property(TARGET black PROPERTY MSVC_RUNTIME_CHECKS "")
 target_compile_options(black PRIVATE /GS- /Gs999999)
 target_link_options(black PRIVATE
   /BASE:0x10000 /FIXED /DYNAMICBASE:NO /NXCOMPAT:NO /SAFESEH:NO /LARGEADDRESSAWARE
   /NODEFAULTLIB /ENTRY:StubEntry /SUBSYSTEM:WINDOWS /MANIFEST:NO /INCREMENTAL:NO)
+
+# black-config.exe: the settings outside the game (controller layout, HUD extras), written to black.ini next to it.
+add_executable(black-config WIN32 config/black_config.cpp)
+target_include_directories(black-config PRIVATE src)
+target_compile_definitions(black-config PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
+target_compile_options(black-config PRIVATE /W3 /utf-8 /EHsc)
+target_link_libraries(black-config PRIVATE comctl32 shell32 user32 gdi32)

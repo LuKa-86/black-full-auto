@@ -33,6 +33,7 @@ WINDOWPLACEMENT g_windowed_place = {sizeof(WINDOWPLACEMENT)};
 // releases it). The click that captures is not passed to the game.
 std::atomic<bool> g_captured{false};
 std::atomic<int> g_mouse_dx, g_mouse_dy, g_wheel, g_buttons;
+std::atomic<int> g_clicked; // buttons that went down since the last mouse_buttons() (once per pad poll)
 bool g_hold_left; // the capturing click: masked until released
 constexpr UINT WM_APP_CAPTURE = WM_APP + 0x52; // wParam: 1 = capture, 0 = release (request_capture)
 constexpr UINT WM_APP_FULLSCREEN = WM_APP + 0x53; // wParam: 1 = fullscreen, 0 = windowed (set_fullscreen)
@@ -109,6 +110,7 @@ void capture_mouse(bool on)
     } else {
         ClipCursor(nullptr);
         g_buttons = 0;
+        g_clicked = 0;
     }
     g_mouse_dx = g_mouse_dy = g_wheel = 0;
 }
@@ -134,6 +136,7 @@ void raw_input(HRAWINPUT h)
     if (f & RI_MOUSE_LEFT_BUTTON_UP) g_hold_left = false;
     if (g_hold_left) b &= ~1;
     g_buttons = b;
+    g_clicked |= b; // a click that goes down and up between two polls still counts once (mouse_buttons)
     if (f & RI_MOUSE_WHEEL) { // notches (smooth-scrolling wheels send fractions: count each burst as one)
         SHORT d = (SHORT)m.usButtonData;
         g_wheel += d / WHEEL_DELTA ? d / WHEEL_DELTA : (d > 0 ? 1 : -1);
@@ -357,7 +360,11 @@ void set_fullscreen(bool on)
 
 bool fullscreen() { return g_hwnd && is_fullscreen(); }
 
-int mouse_buttons() { return g_captured ? g_buttons.load() : 0; }
+int mouse_buttons()
+{
+    int clicked = g_clicked.exchange(0);
+    return g_captured ? g_buttons.load() | clicked : 0;
+}
 
 void mouse_take(int *dx, int *dy, int *wheel)
 {

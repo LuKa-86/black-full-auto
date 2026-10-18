@@ -73,7 +73,26 @@ struct Config {
     bool effects_native = false; // the small effect buffers at their Xbox size (PC SETTINGS); default: render scale, smoothed
     bool seam_fill = true;     // fill hairline cracks between geometry pieces (PC SETTINGS, --no-seamfill)
     bool autoaim = false;      // the game's view pull toward targets, off by default (input/autoaim.cpp; --autoaim, PC SETTINGS)
-    float fov = 70.0f;         // horizontal field of view in play, degrees (fov.cpp; --fov, PC SETTINGS; the game's is 70)
+    bool reload_blur = true;   // the game's screen blur while reloading (reloadblur.cpp; --no-reload-blur, PC SETTINGS)
+    float sprint = 1.5f;       // speed factor while the sprint key is held, 0 = off (input/player_extras.cpp; PC SETTINGS)
+    float autoheal = 0.0f;     // use a health pack when health falls below this fraction, 0 = off (input/player_extras.cpp)
+    bool aim_hold = false;     // aim while the aim key is held instead of the game's toggle (input/bindings.cpp)
+    float reload_speed = 1.5f; // reload animation speed, 1 = the original (input/player_extras.cpp; PC SETTINGS)
+    int crosshair = 0;        // the port's crosshair: 0 none (the game's dot only), 1 dot, 2-4 crosses, 5 cross and dot, 6 circle
+    int crosshair_colour = 0;  // 0 white, 1 green, 2 red, 3 yellow, 4 cyan (d3d/overlay.cpp)
+    bool health_percent = true; // health as NN% in the health panel (d3d/overlay.cpp; PC SETTINGS)
+    bool enemy_markers = false; // a marker above each enemy's head (d3d/overlay.cpp; PC SETTINGS)
+    bool cheat_god = false, cheat_ammo = false, cheat_grenades = false; // start values (--god, --infinite-ammo,
+                                                                         // --infinite-grenades); the cheat menu changes them
+    bool pad_cod = true;       // controller: the port's layout, pad_<action> in black.ini (input/bindings.cpp); false = the game's own
+    bool pad_southpaw = false; // the port's layout with the sticks swapped (pad_sticks = southpaw)
+    int rumble = 100;          // controller vibration strength in percent, 0 = off (input/xinput.cpp)
+    int unfocused = 1;         // window in the background: 0 carry on, 1 mute, 2 mute and pause the game (input/xinput.cpp)
+    bool hit_marker = true;    // a mark on the crosshair when the player's shot or grenade hurts an enemy (d3d/overlay.cpp)
+    bool grenade_warning = true; // an arrow towards a live grenade close to the player (d3d/overlay.cpp)
+    bool ammo_warning = true;  // RELOAD / LOW AMMO / NO AMMO under the crosshair (d3d/overlay.cpp)
+    bool grenade_cook = true;// hold the grenade key to throw further; 4 s goes off in the hand (input/player_extras.cpp)
+    float fov = 70.0f;        // horizontal field of view in play, degrees (fov.cpp; --fov, PC SETTINGS; the game's is 70)
     bool skip_movies = true;   // A / START skip any movie, also unseen ones (input/movies.cpp; --no-movie-skip, PC SETTINGS)
     bool known_build = false;  // the XBE is the NTSC-U build the address tables are for (main.cpp)
     std::wstring game_override; // --game-override: files there replace the game's of the same relative path

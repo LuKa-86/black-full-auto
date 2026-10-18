@@ -10,7 +10,9 @@
 #include "fe/bind_list.h"
 #include "fe/vars.h"
 #include "fov.h"
+#include "input/action_list.h"
 #include "input/autoaim.h"
+#include "reloadblur.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -64,6 +66,9 @@ void res_set(int i)
 constexpr int kSteps = 26;
 int step_of(float v, float first, float step) { return std::clamp((int)std::lround((v - first) / step), 0, kSteps - 1); }
 const float kReverb[] = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f}; // 0 = off
+const float kSprint[] = {0.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f}; // 0 = off
+const float kHeal[] = {0.0f, 0.2f, 0.3f, 0.4f, 0.5f};     // 0 = off
+const float kReload[] = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f};  // 1 = the original
 
 template <size_t N> int nearest(const float (&list)[N], float v)
 {
@@ -71,6 +76,76 @@ template <size_t N> int nearest(const float (&list)[N], float v)
     for (int i = 1; i < (int)N; i++)
         if (std::fabs(list[i] - v) < std::fabs(list[best] - v)) best = i;
     return best;
+}
+
+// Settings presets (AUDIO AND GAME > SETTINGS PRESET): the port's defaults, or the original game with every port
+// addition off (HUD extras, crosshair, sprint, automatic health pack, hold to aim, faster reloads, grenade cooking,
+// skipping any movie, weapon slot keys, muting in the background, the port's controller layout) and the game's own
+// behaviour back (reload blur, aim assist, 70 degree field of view, full vibration). Picture settings are not part of
+// either. The row shows CUSTOM when the settings match neither.
+struct Preset {
+    int crosshair;
+    float sprint, autoheal, reload_speed, fov;
+    bool aim_hold, reload_blur, grenade_cook, autoaim, skip_movies, health_percent, enemy_markers, hit_marker,
+        grenade_warning, ammo_warning, pad_cod, pad_southpaw;
+    int unfocused, rumble;
+    bool weapon_keys; // 1 and 2 on WEAPON SLOT 1 / 2
+};
+const Preset kPresets[2] = {
+    {0, 1.5f, 0.0f, 1.5f, 70.0f, false, true, true, false, true, true, false, true, true, true, true, false, 1, 100, true},
+    {0, 0.0f, 0.0f, 1.0f, 70.0f, false, true, false, true, false, false, false, false, false, false, false, false, 0, 100, false},
+};
+
+bool weapon_keys_set()
+{
+    int a1 = bindings::action_index("weapon_1"), a2 = bindings::action_index("weapon_2");
+    return bindings::key(a1, 0) == '1' && bindings::key(a2, 0) == '2';
+}
+
+bool preset_matches(const Preset &p)
+{
+    return g_cfg.crosshair == p.crosshair && close_to(g_cfg.sprint, p.sprint) && close_to(g_cfg.autoheal, p.autoheal) &&
+           close_to(g_cfg.reload_speed, p.reload_speed) && close_to(g_cfg.fov, p.fov) && g_cfg.aim_hold == p.aim_hold &&
+           g_cfg.reload_blur == p.reload_blur && g_cfg.grenade_cook == p.grenade_cook && g_cfg.autoaim == p.autoaim &&
+           g_cfg.skip_movies == p.skip_movies && g_cfg.health_percent == p.health_percent &&
+           g_cfg.enemy_markers == p.enemy_markers && g_cfg.hit_marker == p.hit_marker &&
+           g_cfg.grenade_warning == p.grenade_warning && g_cfg.ammo_warning == p.ammo_warning && g_cfg.pad_cod == p.pad_cod &&
+           g_cfg.pad_southpaw == p.pad_southpaw && g_cfg.unfocused == p.unfocused && g_cfg.rumble == p.rumble &&
+           weapon_keys_set() == p.weapon_keys;
+}
+
+int preset_get()
+{
+    for (int i = 0; i < 2; i++)
+        if (preset_matches(kPresets[i])) return i;
+    return -1;
+}
+
+void preset_set(int i)
+{
+    const Preset &p = kPresets[i];
+    g_cfg.crosshair = p.crosshair;
+    g_cfg.sprint = p.sprint;
+    g_cfg.autoheal = p.autoheal;
+    g_cfg.reload_speed = p.reload_speed;
+    g_cfg.fov = p.fov;
+    fov_set(p.fov);
+    g_cfg.aim_hold = p.aim_hold;
+    reload_blur_set(p.reload_blur);
+    g_cfg.grenade_cook = p.grenade_cook;
+    autoaim_set(p.autoaim);
+    g_cfg.skip_movies = p.skip_movies;
+    g_cfg.health_percent = p.health_percent;
+    g_cfg.enemy_markers = p.enemy_markers;
+    g_cfg.hit_marker = p.hit_marker;
+    g_cfg.grenade_warning = p.grenade_warning;
+    g_cfg.ammo_warning = p.ammo_warning;
+    g_cfg.pad_cod = p.pad_cod;
+    g_cfg.pad_southpaw = p.pad_southpaw;
+    g_cfg.unfocused = p.unfocused;
+    g_cfg.rumble = p.rumble;
+    bindings::set_key(bindings::action_index("weapon_1"), 0, p.weapon_keys ? '1' : 0);
+    bindings::set_key(bindings::action_index("weapon_2"), 0, p.weapon_keys ? '2' : 0);
 }
 
 int shown_fps() { return g_cfg.fps_next ? g_cfg.fps_next : g_cfg.fps; }
@@ -135,9 +210,68 @@ const Row kRows[] = {
      [](int i) { g_cfg.mouse_sens = 0.25f * (i + 1); }, [](int i) { return number(0.25f * (i + 1), L"%.2f"); }, true},
     {"INVERT MOUSE", 2, [] { return (int)g_cfg.mouse_invert; }, [](int i) { g_cfg.mouse_invert = i != 0; }, [](int i) { return on_off(i); }},
     {"KEY BINDINGS", 1, [] { return 0; }, [](int) {}, [](int) { return std::wstring(); }}, // opens the bindings page
+    // AUDIO AND GAME, added later (after KEY BINDINGS so the row numbers above stay)
+    {"RELOAD BLUR", 2, [] { return (int)g_cfg.reload_blur; }, [](int i) { reload_blur_set(i != 0); }, [](int i) { return on_off(i); }},
+    {"SPRINT SPEED", 9, [] { return g_cfg.sprint > 1.0f ? std::max(1, nearest(kSprint, g_cfg.sprint)) : 0; },
+     [](int i) { g_cfg.sprint = kSprint[i]; },
+     [](int i) { return i ? number(kSprint[i], L"%.2f X") : std::wstring(L"OFF"); }},
+    {"AUTO HEALTH PACK", 5, [] { return g_cfg.autoheal > 0.0f ? std::max(1, nearest(kHeal, g_cfg.autoheal)) : 0; },
+     [](int i) { g_cfg.autoheal = kHeal[i]; },
+     [](int i) { return i ? L"BELOW " + number(kHeal[i] * 100, L"%.0f%%") : std::wstring(L"OFF"); }},
+    // CONTROLS, added later
+    {"AIM", 2, [] { return (int)g_cfg.aim_hold; }, [](int i) { g_cfg.aim_hold = i != 0; },
+     [](int i) { return std::wstring(i ? L"HOLD" : L"TOGGLE (ORIGINAL)"); }},
+    // DISPLAY, added later
+    {"CROSSHAIR", 7, [] { return g_cfg.crosshair; }, [](int i) { g_cfg.crosshair = i; },
+     [](int i) {
+         static const wchar_t *k[] = {L"ORIGINAL", L"DOT", L"SMALL CROSS", L"CROSS", L"LARGE CROSS", L"CROSS AND DOT", L"CIRCLE"};
+         return std::wstring(k[i]);
+     }},
+    {"CROSSHAIR COLOUR", 5, [] { return g_cfg.crosshair_colour; }, [](int i) { g_cfg.crosshair_colour = i; },
+     [](int i) {
+         static const wchar_t *k[] = {L"WHITE", L"GREEN", L"RED", L"YELLOW", L"CYAN"};
+         return std::wstring(k[i]);
+     }},
+    // CONTROLS, added later
+    {"RELOAD SPEED", 5, [] { return nearest(kReload, g_cfg.reload_speed); }, [](int i) { g_cfg.reload_speed = kReload[i]; },
+     [](int i) { return i ? number(kReload[i], L"%.2f X") : std::wstring(L"ORIGINAL"); }},
+    // HUD page (d3d/overlay.cpp)
+    {"HEALTH PERCENTAGE", 2, [] { return (int)g_cfg.health_percent; }, [](int i) { g_cfg.health_percent = i != 0; },
+     [](int i) { return on_off(i); }},
+    // links to the sub-pages (kHudLink, kGameplayLink)
+    {"HUD", 1, [] { return 0; }, [](int) {}, [](int) { return std::wstring(); }},
+    {"GAMEPLAY", 1, [] { return 0; }, [](int) {}, [](int) { return std::wstring(); }},
+    // AUDIO AND GAME
+    {"IN BACKGROUND", 3, [] { return g_cfg.unfocused; }, [](int i) { g_cfg.unfocused = i; },
+     [](int i) {
+         static const wchar_t *k[] = {L"CARRY ON (ORIGINAL)", L"MUTE", L"MUTE AND PAUSE"};
+         return std::wstring(k[i]);
+     }},
+    // CONTROLS (input/xinput.cpp, input/bindings.cpp; the buttons of the port's layout are set in black-config.exe)
+    {"VIBRATION", 5, [] { return std::clamp((g_cfg.rumble + 12) / 25, 0, 4); }, [](int i) { g_cfg.rumble = i * 25; },
+     [](int i) { return i ? number(i * 25.0f, L"%.0f%%") + (i == 4 ? L" (ORIGINAL)" : L"") : std::wstring(L"OFF"); }},
+    {"CONTROLLER LAYOUT", 2, [] { return (int)!g_cfg.pad_cod; }, [](int i) { g_cfg.pad_cod = i == 0; },
+     [](int i) { return std::wstring(i ? L"GAME'S OWN (ORIGINAL)" : L"PORT (BLACK-CONFIG)"); }},
+    {"STICKS", 2, [] { return (int)g_cfg.pad_southpaw; }, [](int i) { g_cfg.pad_southpaw = i != 0; },
+     [](int i) { return std::wstring(i ? L"SOUTHPAW" : L"NORMAL"); }},
+    // HUD page
+    {"ENEMY MARKERS", 2, [] { return (int)g_cfg.enemy_markers; }, [](int i) { g_cfg.enemy_markers = i != 0; },
+     [](int i) { return on_off(i); }},
+    {"HIT MARKER", 2, [] { return (int)g_cfg.hit_marker; }, [](int i) { g_cfg.hit_marker = i != 0; },
+     [](int i) { return on_off(i); }},
+    {"GRENADE WARNING", 2, [] { return (int)g_cfg.grenade_warning; }, [](int i) { g_cfg.grenade_warning = i != 0; },
+     [](int i) { return on_off(i); }},
+    {"RELOAD PROMPT", 2, [] { return (int)g_cfg.ammo_warning; }, [](int i) { g_cfg.ammo_warning = i != 0; },
+     [](int i) { return on_off(i); }},
+    // GAMEPLAY page
+    {"GRENADE COOKING", 2, [] { return (int)g_cfg.grenade_cook; }, [](int i) { g_cfg.grenade_cook = i != 0; },
+     [](int i) { return i ? std::wstring(L"ON") : std::wstring(L"OFF (ORIGINAL)"); }},
+    // AUDIO AND GAME: every port addition at once (preset_get / preset_set below)
+    {"SETTINGS PRESET", 2, [] { return preset_get(); }, [](int i) { preset_set(i); },
+     [](int i) { return std::wstring(i < 0 ? L"CUSTOM" : i ? L"ORIGINAL GAME" : L"PORT DEFAULTS"); }},
 };
 constexpr int kRowN = sizeof kRows / sizeof kRows[0];
-constexpr int kKeyBindings = 15;
+constexpr int kKeyBindings = 15, kHudLink = 24, kGameplayLink = 25, kPreset = 35;
 
 } // namespace
 
@@ -145,9 +279,11 @@ const std::vector<Group> &groups()
 {
     static const std::vector<Group> g = {
         {"PCVideo", "VIDEO", {0, 1, 2, 3, 4, 5}},
-        {"PCDisplay", "DISPLAY", {6, 7, 8, 9}},
-        {"PCGame", "AUDIO AND GAME", {10, 11, 12}},
-        {"PCControls", "CONTROLS", {13, 14, kKeyBindings}},
+        {"PCDisplay", "DISPLAY", {6, 7, 8, 9, 20, kHudLink}},
+        {"PCGame", "AUDIO AND GAME", {10, 26, 11, 12, kGameplayLink, kPreset}},
+        {"PCControls", "CONTROLS", {13, 14, kKeyBindings, 28, 29, 27}},
+        {"PCHud", "HUD", {21, 23, 30, 31, 32, 33}, "PCDisplay"},
+        {"PCGameplay", "GAMEPLAY", {17, 18, 19, 22, 16, 34}, "PCGame"},
     };
     return g;
 }
@@ -160,7 +296,7 @@ std::wstring value(int n)
     if (n < 0 || n >= kRowN) return L"";
     const Row &r = kRows[n];
     int i = std::min(r.get(), r.choices - 1);
-    if (i < 0 && r.get != res_get) i = 0; // only the render size has a value outside the list (CUSTOM)
+    if (i < 0 && r.get != res_get && n != kPreset) i = 0; // only these show a value outside the list (CUSTOM)
     return r.text(i);
 }
 
@@ -179,7 +315,7 @@ bool is_slider(int n) { return n >= 0 && n < kRowN && kRows[n].slider; }
 
 bool restart_only(int n) { return n == 6 || n == 7; } // aspect ratio, frame rate: read by the game at boot
 
-const char *link(int n) { return n == kKeyBindings ? "PCBindings" : nullptr; }
+const char *link(int n) { return n == kKeyBindings ? "PCBindings" : n == kHudLink ? "PCHud" : n == kGameplayLink ? "PCGameplay" : nullptr; }
 
 int slider_pos(int n)
 {

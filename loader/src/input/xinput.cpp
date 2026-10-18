@@ -7,6 +7,7 @@
 #include "d3d/draw.h"
 #include "d3d/host.h"
 #include "input/bindings.h"
+#include "input/cheats.h"
 #include "input/mouselook.h"
 #include "input/movies.h"
 
@@ -60,6 +61,16 @@ struct Device {
 constexpr uint32_t DEV_MAGIC = 0x44495858; // 'XXID'
 
 bool g_reported_insertion;
+std::atomic<uint16_t> g_rumble[2]; // the game's last motor speeds (left, right)
+bool g_rumble_told;
+bool g_focus = true; // the game window was in front at the last poll
+
+void send_rumble()
+{
+    bool quiet = !g_focus && g_cfg.unfocused > 0;
+    PcVibration v = {(WORD)(quiet ? 0 : g_rumble[0] * g_cfg.rumble / 100), (WORD)(quiet ? 0 : g_rumble[1] * g_cfg.rumble / 100)};
+    for (DWORD i = 0; g_pc_set && i < 4; i++) g_pc_set(i, &v); // port 0 = every PC pad
+}
 
 void load_xinput()
 {
@@ -77,7 +88,7 @@ void load_xinput()
 
 // --press "frame:button,..." or "SECONDSs:button,...": scripted presses for unattended test runs, held for
 // 10 frames, or 300 ms when timed in seconds since the first input poll. "button*MS" holds for MS
-// milliseconds; lx/ly/rx/ry+NN or -NN pushes a stick to NN percent (e.g. "80s:rx+25*2000"); mx/my+NN or -NN
+// milliseconds (frame presses: MS x 60 / 1000 frames); lx/ly/rx/ry+NN or -NN pushes a stick to NN percent (e.g. "80s:rx+25*2000"); mx/my+NN or -NN
 // moves the mouse NN counts per poll.
 struct Press {
     uint32_t frame;   // or milliseconds when timed
@@ -105,7 +116,7 @@ void parse_presses()
             uint32_t at = timed ? (uint32_t)(atof(item.c_str()) * 1000.0) : (uint32_t)atoi(item.c_str());
             std::string b = item.substr(colon + 1);
             size_t star = b.find('*');
-            uint32_t hold = 300;
+            uint32_t hold = timed ? 300 : 0; // frame presses: 0 = 10 frames
             if (star != std::string::npos) {
                 hold = (uint32_t)atoi(b.c_str() + star + 1);
                 b.resize(star);
@@ -216,7 +227,8 @@ void apply_presses(XGamepad &g)
     uint32_t ms = (uint32_t)(GetTickCount64() - g_first_poll_ms);
     read_press_file(ms);
     for (const Press &p : g_presses) {
-        if (p.timed ? (ms < p.frame || ms >= p.frame + p.hold_ms) : (f < p.frame || f >= p.frame + 10)) continue;
+        uint32_t frames = p.hold_ms ? p.hold_ms * 60 / 1000 : 10;
+        if (p.timed ? (ms < p.frame || ms >= p.frame + p.hold_ms) : (f < p.frame || f >= p.frame + frames)) continue;
         const std::string &b = p.button;
         if (b.size() > 3 && (b[0] == 'l' || b[0] == 'r') && (b[1] == 'x' || b[1] == 'y') && (b[2] == '+' || b[2] == '-')) {
             int16_t v = (int16_t)std::clamp(atoi(b.c_str() + 2) * 32767 / 100, -32767, 32767);
@@ -274,6 +286,7 @@ int mouse_look(bool live, int *raw_wheel)
     float k = 0.022f * g_cfg.mouse_sens; // degrees per count
     // The game's yaw rate is positive to the left and its pitch rate positive downwards (mouse dy > 0 = towards
     // the user = look down).
+    if (cheats::menu_open()) dx = dy = 0; // the cheat menu holds the view still
     mouselook_set_frame(-dx * k, (g_cfg.mouse_invert ? -dy : dy) * k);
     return wheel;
 }
@@ -309,6 +322,14 @@ void read_pad(uint32_t port, XGamepad &g)
     }
     apply_presses(g);
     bool focus = GetForegroundWindow() == host3d::window();
+    if (focus != g_focus) { // the window went to the background or came back
+        g_focus = focus;
+        send_rumble();
+        if (!focus && g_cfg.unfocused == 2 && bindings::in_play()) {
+            logf("[input] window in the background: pausing the game");
+            bindings::press_game_action(25); // pause
+        }
+    }
     bool live = focus && host3d::mouse_captured();
     int raw_wheel;
     int wheel = mouse_look(live, &raw_wheel);
@@ -384,12 +405,21 @@ uint32_t __stdcall XInputGetState(Device *h, XState *pState)
     return ERROR_SUCCESS;
 }
 
-// XINPUT_FEEDBACK: header {dwStatus, hEvent, Reserved[58]} (68 bytes with padding), then rumble.
+// XINPUT_FEEDBACK: header {dwStatus, hEvent, Reserved[58]} (68 bytes with padding), then rumble. The motors run at
+// `rumble` percent of what the game asks, and stop while the window is in the background (unless `unfocused` = 0).
 uint32_t __stdcall XInputSetState(Device *h, uint8_t *pFeedback)
 {
     if (!h || h->magic != DEV_MAGIC) return ERROR_DEVICE_NOT_CONNECTED;
-    PcVibration v = {*(uint16_t *)(pFeedback + 68), *(uint16_t *)(pFeedback + 70)};
-    for (DWORD i = 0; g_pc_set && h->port == 0 && i < 4; i++) g_pc_set(i, &v); // port 0 = every PC pad
+    if (h->port == 0) {
+        g_rumble[0] = *(uint16_t *)(pFeedback + 68);
+        g_rumble[1] = *(uint16_t *)(pFeedback + 70);
+        if ((g_rumble[0] || g_rumble[1]) && !g_rumble_told) {
+            g_rumble_told = true;
+            logf("[input] the game set the controller vibration (%u, %u); strength %d%%", g_rumble[0].load(),
+                 g_rumble[1].load(), g_cfg.rumble);
+        }
+        send_rumble();
+    }
     *(uint32_t *)pFeedback = ERROR_SUCCESS; // completed immediately
     if (HANDLE ev = *(HANDLE *)(pFeedback + 4)) SetEvent(ev);
     return ERROR_IO_PENDING;

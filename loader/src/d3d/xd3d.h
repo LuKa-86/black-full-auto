@@ -119,7 +119,7 @@ struct Viewport { // D3DVIEWPORT8
     float MinZ, MaxZ;
 };
 
-// ---- device object fields read or written directly by game code (see NOTES.md) ----
+// ---- device object fields read or written directly by game code (see docs/NOTES.md) ----
 constexpr uint32_t DEV_PUT = 0x0000;          // push buffer write pointer
 constexpr uint32_t DEV_THRESHOLD = 0x0004;    // MakeRequestedSpace when PUT reaches this
 constexpr uint32_t DEV_STATEFLAGS = 0x0008;

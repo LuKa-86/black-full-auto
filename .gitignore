@@ -43,3 +43,6 @@ perf/
 dist/
 # The port's rebuilt front-end files (made at start from the user's game files)
 cache/
+
+# Python bytecode
+__pycache__/

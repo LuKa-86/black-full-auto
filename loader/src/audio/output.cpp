@@ -9,6 +9,7 @@
 #include "audio/output.h"
 
 #include "common.h"
+#include "d3d/host.h"
 
 #include <windows.h>
 #include <xaudio2.h>
@@ -33,6 +34,7 @@ uint32_t g_next;
 FILE *g_wav;
 uint32_t g_wav_frames;
 std::atomic<HRESULT> g_error{S_OK};
+bool g_muted; // the window is in the background and `unfocused` asks for silence
 ULONGLONG g_last_taken, g_retry_at; // GetTickCount64: the device last took a block; the next reopen
 LARGE_INTEGER g_clock_start;
 uint64_t g_clock_blocks; // asked for by the clock since g_clock_start (0: not running)
@@ -77,7 +79,7 @@ HRESULT start_engine()
     HRESULT hr = g_create(&g_xa, 0, XAUDIO2_DEFAULT_PROCESSOR);
     if (SUCCEEDED(hr)) hr = g_xa->RegisterForCallbacks(&g_callback);
     if (SUCCEEDED(hr)) hr = g_xa->CreateMasteringVoice(&g_master, 2, RATE);
-    if (SUCCEEDED(hr) && g_cfg.background) g_master->SetVolume(0.0f); // tests: keep the timing, not the sound
+    if (SUCCEEDED(hr) && (g_cfg.background || g_muted)) g_master->SetVolume(0.0f); // tests: keep the timing, not the sound
     WAVEFORMATEX wf = {};
     wf.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
     wf.nChannels = 2;
@@ -153,6 +155,14 @@ uint32_t blocks_wanted()
             if (SUCCEEDED(start_engine())) logf("[audio] XAudio2 output open again");
         }
         if (!g_src) return clock_blocks();
+    }
+    // In the background (another window in front, or minimised) the mix goes silent when `unfocused` says so; the
+    // mixer keeps running, so the game's timing does not change. XAudio2 ramps the volume change over a pass.
+    bool mute = g_cfg.unfocused > 0 && host3d::window() && GetForegroundWindow() != host3d::window();
+    if (mute != g_muted) {
+        g_muted = mute;
+        if (!g_cfg.background) g_master->SetVolume(mute ? 0.0f : 1.0f);
+        logf("[audio] %s", mute ? "window in the background: muted" : "window in front: sound on");
     }
     XAUDIO2_VOICE_STATE st;
     g_src->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);

@@ -7,6 +7,7 @@
 #include "d3d/draw.h"
 #include "d3d/host.h"
 #include "d3d/nv2a_psh.h"
+#include "d3d/overlay.h"
 #include "d3d/pshader.h"
 #include "perf.h"
 #include "d3d/pushbuf.h"
@@ -564,6 +565,7 @@ void present_backbuffer()
         host3d::dev()->StretchRect(s, nullptr, g_host_backbuffer, &pic, D3DTEXF_LINEAR);
     }
     s->Release();
+    draw_overlay(g_host_backbuffer, frame, pic);
 }
 
 // A colour target that is never sampled (for passes that only write depth).

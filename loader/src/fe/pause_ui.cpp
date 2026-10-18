@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -54,15 +55,20 @@ std::vector<Row> rows(std::wstring *title)
     auto gs = groups();
     if (g_screen == kMenu) {
         *title = L"PC SETTINGS";
-        for (int i = 0; i < (int)gs.size() && i < kRows; i++) out.push_back({Row::Link, i});
+        for (int i = 0; i < (int)gs.size() && (int)out.size() < kRows; i++)
+            if (!gs[i].parent) out.push_back({Row::Link, i}); // sub-pages open from their parent's page
     } else if (g_screen == kKeys) {
         *title = L"KEY BINDINGS";
         for (int i = 0; i < bindlist::kRows; i++) out.push_back({Row::Key, i});
     } else if (g_screen >= 0 && g_screen < (int)gs.size()) {
         *title = widen(gs[g_screen].title);
         for (int n : gs[g_screen].rows) {
-            if (pcset::link(n)) out.push_back({Row::Link, kKeys});
-            else out.push_back({pcset::is_slider(n) ? Row::Slider : Row::Choice, n});
+            if (const char *page = pcset::link(n)) {
+                int to = kKeys;
+                for (int i = 0; i < (int)gs.size(); i++)
+                    if (!strcmp(gs[i].page, page)) to = i;
+                out.push_back({Row::Link, to});
+            } else out.push_back({pcset::is_slider(n) ? Row::Slider : Row::Choice, n});
             if ((int)out.size() == kRows) break;
         }
     }

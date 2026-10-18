@@ -1,6 +1,6 @@
 <!--
 Copy of the project's planning doc "BLACK Xbox to PC Port Roadmap", taken 2026-10-04.
-Findings made after this was written are in ../NOTES.md ("Findings that change the plan"), not edited in here.
+Findings made after this was written are in NOTES.md ("Findings that change the plan"), not edited in here.
 -->
 
 # BLACK Xbox to PC Port Roadmap

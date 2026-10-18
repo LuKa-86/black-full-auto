@@ -13,6 +13,10 @@
 #include "timing.h"
 #include "settings.h"
 #include "input/autoaim.h"
+#include "input/cheats.h"
+#include "input/hits.h"
+#include "input/player_extras.h"
+#include "reloadblur.h"
 #include "input/mouselook.h"
 #include "kernel/ktable.h"
 #include "kernel/xboxkrnl.h"
@@ -87,6 +91,9 @@ void usage()
            "  --mouse-sens K    mouse look sensitivity, K x 0.022 degrees per count (default 2.0)\n"
            "  --mouse-invert    mouse forward looks down\n"
            "  --autoaim         the game's auto-aim (the view pulling toward enemies), off by default; --no-autoaim\n"
+           "  --no-reload-blur  no screen blur while reloading\n"
+           "  --crosshair N     0 the game's, 1 dot, 2-4 small/normal/large cross, 5 cross and dot, 6 circle\n"
+           "  --crosshair-colour N  0 white, 1 green, 2 red, 3 yellow, 4 cyan\n"
            "  --fov D           horizontal field of view in play, 50-120 degrees (default 70, the game's; PC SETTINGS > VIDEO)\n"
            "  --no-movie-skip   movies skip only as in the original (default: A / START skip every movie)\n"
            "  --no-pc-menus     no PC SETTINGS pages in the game's Options menu (built at start into cache\\menus\n"
@@ -201,6 +208,20 @@ bool parse_args()
         } else if (a == L"--mouse-invert") { g_cfg.mouse_invert = true; settings_mark_cli("mouse_invert"); }
         else if (a == L"--no-autoaim") { g_cfg.autoaim = false; settings_mark_cli("autoaim"); }
         else if (a == L"--autoaim") { g_cfg.autoaim = true; settings_mark_cli("autoaim"); }
+        else if (a == L"--no-reload-blur") { g_cfg.reload_blur = false; settings_mark_cli("reloadblur"); }
+        else if (a == L"--enemy-markers") { g_cfg.enemy_markers = true; settings_mark_cli("enemy_markers"); }
+        else if (a == L"--no-grenade-cook") { g_cfg.grenade_cook = false; settings_mark_cli("grenade_cook"); }
+        else if (a == L"--pad-game-layout") { g_cfg.pad_cod = false; settings_mark_cli("pad_layout"); }
+        else if (a == L"--god") g_cfg.cheat_god = true;
+        else if (a == L"--infinite-ammo") g_cfg.cheat_ammo = true;
+        else if (a == L"--infinite-grenades") g_cfg.cheat_grenades = true;
+        else if (a == L"--crosshair" || a == L"--crosshair-colour") {
+            std::wstring v;
+            if (!next(v)) return false;
+            bool style = a == L"--crosshair";
+            (style ? g_cfg.crosshair : g_cfg.crosshair_colour) = std::clamp(_wtoi(v.c_str()), 0, style ? 6 : 4);
+            settings_mark_cli(style ? "crosshair" : "crosshair_colour");
+        }
         else if (a == L"--fov") {
             settings_mark_cli("fov");
             std::wstring v;
@@ -445,6 +466,10 @@ int run(void *reserve, unsigned reserve_size)
     if (known_build) install_timing_patches();
     if (known_build) install_mouselook_patches();
     if (known_build) install_autoaim_patch();
+    if (known_build) install_reload_blur_patch();
+    if (known_build) install_player_extras();
+    if (known_build) hits::install();
+    if (known_build) cheats::install();
     if (known_build) install_fov_patch();
     if (known_build) install_fe_calls();
     if (known_build && g_cfg.pc_menus) { // the in-game PC SETTINGS pages, from the user's own front-end file
