@@ -109,6 +109,13 @@ const wchar_t *const kNames[3][kPadButtons] = {
      L"Minus (−)", L"D-Pad Up", L"D-Pad Down", L"D-Pad Left", L"D-Pad Right"},
 };
 
+// kPadCombos (L3+R3, LB+RB, LT+RT, BACK+START) in short names that fit the lists.
+const wchar_t *const kComboNames[3][kPadComboCount] = {
+    {L"L3 + R3", L"LB + RB", L"LT + RT", L"Back + Start"},
+    {L"L3 + R3", L"L1 + R1", L"L2 + R2", L"Share + Options"},
+    {L"L Stick + R Stick", L"L + R", L"ZL + ZR", L"Minus + Plus"},
+};
+
 Brand detect_brand(bool *found)
 {
     *found = false;
@@ -143,6 +150,7 @@ struct Preset {
 const std::vector<std::pair<const char *, const char *>> kCommon = {
     {"fire", "RT"}, {"aim", "LT"}, {"sprint", "L3"}, {"reload", "X.tap"}, {"use", "X.hold"}, {"next_weapon", "Y"},
     {"prev_weapon", "DRIGHT"}, {"firing_mode", "DUP"}, {"suppressor", "DLEFT"}, {"pause", "START"}, {"objectives", "BACK"},
+    {"cheat_menu", "L3+R3"},
 };
 const Preset kPresets[] = {
     {L"Call of Duty (default)", {{"grenade", "RB"}, {"melee", "R3"}, {"crouch", "B"}, {"health_pack", "LB,A,DDOWN"}}},
@@ -198,7 +206,19 @@ HWND label(const wchar_t *text, HFONT font = nullptr, DWORD align = SS_LEFT)
 
 void place(HWND c, int x, int y, int w, int h) { MoveWindow(c, S(x), S(y), S(w), S(h), FALSE); }
 
-int pad_index(const PadBind &b) { return b.button < 0 ? 0 : 1 + b.button * 3 + b.mode; }
+// List entries: none, then each button pressed / tapped / held, then the combos (kPadCombos).
+int pad_index(const PadBind &b)
+{
+    if (b.button < 0) return 0;
+    if (b.button2 < 0) return 1 + b.button * 3 + b.mode;
+    for (int c = 0; c < kPadComboCount; c++) {
+        PadBind cb[kPadSlots];
+        parse_pad(kPadCombos[c], cb);
+        if ((cb[0].button == b.button && cb[0].button2 == b.button2) || (cb[0].button == b.button2 && cb[0].button2 == b.button))
+            return 1 + kPadButtons * 3 + c;
+    }
+    return 0; // a combo the list does not offer (black.ini allows any two buttons)
+}
 
 // The button lists in the current brand's names, keeping each list's choice.
 void fill_pad_lists()
@@ -209,6 +229,7 @@ void fill_pad_lists()
         items.push_back(std::wstring(kNames[g_brand][b]) + L" (Tap)");
         items.push_back(std::wstring(kNames[g_brand][b]) + L" (Hold)");
     }
+    for (int c = 0; c < kPadComboCount; c++) items.push_back(kComboNames[g_brand][c]); // the combos (kPadCombos)
     for (int a = 0; a < kActionCount; a++)
         for (int s = 0; s < kPadSlots; s++) {
             HWND c = g_pad[a][s];
@@ -256,7 +277,11 @@ std::string pad_row(int a)
     PadBind b[kPadSlots];
     for (int s = 0; s < kPadSlots; s++) {
         int i = (int)SendMessageW(g_pad[a][s], CB_GETCURSEL, 0, 0);
-        if (i > 0) b[s].button = (int8_t)((i - 1) / 3), b[s].mode = (PadMode)((i - 1) % 3);
+        if (i > kPadButtons * 3) { // a combo
+            PadBind cb[kPadSlots];
+            parse_pad(kPadCombos[i - 1 - kPadButtons * 3], cb);
+            b[s] = cb[0];
+        } else if (i > 0) b[s].button = (int8_t)((i - 1) / 3), b[s].mode = (PadMode)((i - 1) % 3);
     }
     return pad_text(b);
 }
@@ -298,7 +323,7 @@ bool save_values()
     return true;
 }
 
-int rows() { return (kActionCount - 1 + 1) / 2; } // two columns; the cheat menu stays keyboard-only
+int rows() { return (kActionCount + 1) / 2; } // two columns
 
 void build()
 {
@@ -317,12 +342,12 @@ void build()
     SendMessageW(g_names, CB_SETCURSEL, 0, 0);
     g_detected = label(L"");
     g_hint = label(L"Assign up to three buttons to each action. Tap: press and release within 0.3 seconds. Hold: keep it "
-                   L"pressed for 0.3 seconds or longer. A button can be used for more than one action.");
+                   L"pressed for 0.3 seconds or longer. A combo (such as L3 + R3) acts when both buttons are pressed together. A button "
+                   L"can be used for more than one action.");
     const wchar_t *heads[4] = {L"Action", L"Button 1", L"Button 2", L"Button 3"};
     for (int c = 0; c < 2; c++)
         for (int i = 0; i < 4; i++) g_head[c * 4 + i] = label(heads[i], g_bold);
     for (int a = 0; a < kActionCount; a++) {
-        if (strcmp(kActions[a].ini, "cheat_menu") == 0) continue;
         g_action[a] = label(kActions[a].name);
         for (int s = 0; s < kPadSlots; s++)
             g_pad[a][s] = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_PAD0 + a * kPadSlots + s);
@@ -343,7 +368,7 @@ void build()
 }
 
 constexpr int kMinW = 1040, kRowH = 28, kSettingsY = 68, kSettingsH = 92, kMappingY = 172;
-int mapping_height() { return 94 + rows() * kRowH + 8 + 28 + 14; } // hint, headers, rows, buttons, margin
+int mapping_height() { return 100 + rows() * kRowH + 8 + 28 + 14; } // hint, headers, rows, buttons, margin
 int content_height() { return kMappingY + mapping_height() + 12 + 36 + 10 + 30 + 16; }
 
 // Everything placed for a client area w (in 96-dpi units): two columns of actions sharing the width, each with the
@@ -370,8 +395,8 @@ void layout(int w)
 
     place(g_group_mapping, m, kMappingY, gw, mapping_height());
     y = kMappingY + 24;
-    place(g_hint, in, y, gw - 32, 36);
-    y += 44;
+    place(g_hint, in, y, gw - 32, 40);
+    y += 50;
     int inner = gw - 32, col_w = (inner - 28) / 2, name_w = std::min(170, col_w / 3), list_w = (col_w - name_w - 3 * 6) / 3;
     for (int c = 0; c < 2; c++) {
         int x = in + c * (col_w + 28);

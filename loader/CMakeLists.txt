@@ -96,3 +96,9 @@ target_include_directories(black-config PRIVATE src)
 target_compile_definitions(black-config PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
 target_compile_options(black-config PRIVATE /W3 /utf-8 /EHsc)
 target_link_libraries(black-config PRIVATE comctl32 shell32 user32 gdi32)
+
+# The programs record only the debug-symbols file's name, not the folder they were built in (which would put the
+# builder's own path, user name included, into every release).
+foreach(t blackrt black black-config)
+  target_link_options(${t} PRIVATE "/PDBALTPATH:%_PDB%")
+endforeach()

@@ -403,7 +403,7 @@ void cheat_menu(std::vector<V> &v, std::vector<TextBatch> &batches, const RECT &
     Font *title = make_font(std::max(12, (int)std::lround(42 * u)));
     if (!font || !title) return;
     float line = font->th * 1.25f, pad = 24 * u;
-    const std::wstring help = L"UP/DOWN CHOOSE  ENTER CHANGE  ESC CLOSE";
+    const std::wstring help = L"UP/DOWN CHOOSE  ENTER/A CHANGE  ESC/B CLOSE"; // keyboard or the pad (bindings.cpp)
     // As wide as the widest line (a row's "> label", a gap and its value, or the help line), at least 640/1080 of
     // the height, so no text reaches past the panel.
     float need = std::max(text_width(*font, help), text_width(*title, L"CHEATS"));

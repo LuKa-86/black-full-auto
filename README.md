@@ -14,7 +14,8 @@ thanks to Spark198rus; please star and support [the original project](https://gi
 **You need your own copy of the game.** This repository and its downloads contain no game code, game data, disc
 images or Microsoft code.
 
-> **Project status:** Full Auto is finished and will not receive updates, fixes or support. You are welcome to fork
+> **Project status:** Full Auto is a hobby project with no regular updates or support. Bug reports may not get fixed,
+> but ideas and pull requests for the Windows build are welcome and might be picked up. You are also welcome to fork
 > it, change it and share your own version under the same licence (GPL-2.0).
 
 ## What's new in Full Auto
@@ -31,7 +32,8 @@ off at once and gives you BLACK as it was.
 - **Automatic health pack** when your health drops below a level you choose.
 - **Reload blur switch** to remove the screen blur while reloading.
 - **Weapon slot keys**: 1 and 2 switch straight to a weapon.
-- **Cheat menu** (F1): god mode, infinite ammo and grenades, refill health, and any weapon the current level has.
+- **Cheat menu** (F1, or L3 + R3 on a controller): god mode, infinite ammo and grenades, refill health, and any weapon
+  the current level has.
 
 <p align="center">
   <img src="docs/images/settings-gameplay.png" alt="PC SETTINGS > GAMEPLAY" width="48%">
@@ -61,7 +63,7 @@ off at once and gives you BLACK as it was.
 - **A modern default layout**: RT fire, LT aim, RB grenade, X to reload (tap) or use (hold), B crouch, Y next weapon,
   L3 sprint and R3 melee.
 - **`black-config.exe`** for your own layout: up to three buttons per action, including LB, RB, L3, R3 and the D-pad,
-  each as a press, tap or hold. It has presets based on Call of Duty, Battlefield, Halo Infinite and Destiny 2, shows
+  each as a press, tap or hold, plus two-button combos such as L3 + R3. It has presets based on Call of Duty, Battlefield, Halo Infinite and Destiny 2, shows
   Xbox, PlayStation or Nintendo button names for the controller it detects, and offers southpaw sticks.
 - **Vibration strength** from off to 100%.
 
@@ -149,10 +151,11 @@ PC SETTINGS > CONTROLS > KEY BINDINGS.
 | Firing mode / suppressor | Z / Q | D-pad up / D-pad left |
 | Health pack | X | LB, A or D-pad down |
 | Objectives / pause | Space / Esc | Back / Start |
-| Cheat menu | F1 | |
+| Cheat menu | F1 | L3 + R3 (both sticks pressed) |
 
 In menus, the arrow keys move, Enter selects and Backspace goes back. Enter also skips movies and closes the game's
-hints. The game's on-screen prompts always show Xbox buttons.
+hints. In the cheat menu, use the arrow keys or D-pad to choose, Enter or A to change, and Esc or B to close. The
+game's on-screen prompts always show Xbox buttons.
 
 ## Settings
 

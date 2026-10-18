@@ -42,7 +42,7 @@ inline const Action kActions[] = {
     {"objectives", L"Show Objectives", 36, {VK_SPACE, 0}},
     {"weapon_1", L"Weapon Slot 1", -1, {'1', 0}}, // switch to that inventory slot (bindings.cpp, select_slot)
     {"weapon_2", L"Weapon Slot 2", -1, {'2', 0}},
-    {"cheat_menu", L"Cheat Menu", -1, {VK_F1, 0}}, // input/cheats.cpp; keyboard only (the menu needs the arrows)
+    {"cheat_menu", L"Cheat Menu", -1, {VK_F1, 0}}, // input/cheats.cpp; on the pad L3+R3 by default
 };
 inline constexpr int kActionCount = sizeof kActions / sizeof kActions[0];
 
@@ -56,7 +56,8 @@ inline int action_index(const char *ini)
 // ---- the port's controller layout (`pad_layout = cod`) ----
 // Each action can have up to kPadSlots pad buttons: black.ini pad_<action> = RT, or X.tap,LB. A plain button acts
 // while held; ".tap" acts for one poll when the button is released within kTapMs; ".hold" acts while it has been held
-// kTapMs or longer (so one button can do two things, like X = reload on a tap, use when held).
+// kTapMs or longer (so one button can do two things, like X = reload on a tap, use when held). "L3+R3" is a combo:
+// it acts while both buttons are held, and while it is held neither button does its own actions.
 inline const char *const kPadNames[] = {"A", "B", "X", "Y", "LB", "RB", "LT", "RT", "L3", "R3", "START", "BACK",
                                         "DUP", "DDOWN", "DLEFT", "DRIGHT"};
 inline constexpr int kPadButtons = 16, kPadSlots = 3;
@@ -65,7 +66,11 @@ enum PadMode : uint8_t { kPress, kTap, kHold };
 struct PadBind {
     int8_t button = -1;
     PadMode mode = kPress;
+    int8_t button2 = -1; // the other button of a combo (always pressed, never tapped or held)
 };
+// The combos offered in black-config (any two buttons work in black.ini).
+inline const char *const kPadCombos[] = {"L3+R3", "LB+RB", "LT+RT", "BACK+START"};
+inline constexpr int kPadComboCount = 4;
 
 // The defaults: the Call of Duty layout (user, 2026-10-18: LT aim, RB grenade, A health pack).
 struct PadDefault {
@@ -75,6 +80,7 @@ inline const PadDefault kPadDefaults[] = {
     {"fire", "RT"}, {"aim", "LT"}, {"grenade", "RB"}, {"health_pack", "LB,A,DDOWN"}, {"crouch", "B"},
     {"next_weapon", "Y"}, {"melee", "R3"}, {"firing_mode", "DUP"}, {"suppressor", "DLEFT"}, {"prev_weapon", "DRIGHT"},
     {"objectives", "BACK"}, {"pause", "START"}, {"sprint", "L3"}, {"reload", "X.tap"}, {"use", "X.hold"},
+    {"cheat_menu", "L3+R3"},
 };
 
 // "X.tap,LB" -> slots; false if a name is not a pad button.
@@ -89,9 +95,15 @@ inline bool parse_pad(const std::string &v, PadBind out[kPadSlots])
         size_t dot = part.find('.');
         std::string name = part.substr(0, dot), mode = dot == std::string::npos ? "" : part.substr(dot + 1);
         if (name.empty() || _stricmp(name.c_str(), "none") == 0) continue;
-        for (int b = 0; b < kPadButtons; b++)
+        size_t plus = name.find('+');
+        std::string second = plus == std::string::npos ? "" : name.substr(plus + 1);
+        if (plus != std::string::npos) name.resize(plus);
+        for (int b = 0; b < kPadButtons; b++) {
             if (_stricmp(kPadNames[b], name.c_str()) == 0) out[s].button = (int8_t)b;
-        if (out[s].button < 0) return false;
+            if (!second.empty() && _stricmp(kPadNames[b], second.c_str()) == 0) out[s].button2 = (int8_t)b;
+        }
+        if (out[s].button < 0 || (!second.empty() && (out[s].button2 < 0 || out[s].button2 == out[s].button))) return false;
+        if (out[s].button2 >= 0) continue; // a combo is always pressed
         out[s].mode = _stricmp(mode.c_str(), "tap") == 0 ? kTap : _stricmp(mode.c_str(), "hold") == 0 ? kHold : kPress;
     }
     return true;
@@ -104,6 +116,10 @@ inline std::string pad_text(const PadBind b[kPadSlots])
         if (b[s].button < 0) continue;
         if (!v.empty()) v += ',';
         v += kPadNames[b[s].button];
+        if (b[s].button2 >= 0) {
+            v += std::string("+") + kPadNames[b[s].button2];
+            continue;
+        }
         if (b[s].mode == kTap) v += ".tap";
         if (b[s].mode == kHold) v += ".hold";
     }

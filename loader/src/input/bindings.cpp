@@ -367,7 +367,7 @@ bool load_ini(const char *k, const char *value)
         ensure_pad_defaults();
         int i = action_index(k + 4);
         PadBind b[kPadSlots];
-        if (i >= 0 && i != kCheat && parse_pad(value, b)) memcpy(g_pad[i], b, sizeof b);
+        if (i >= 0 && parse_pad(value, b)) memcpy(g_pad[i], b, sizeof b);
         else if (i >= 0) logf("[input] black.ini: %s = %s: not a pad button list (A B X Y LB RB LT RT L3 R3 START BACK "
                               "DUP DDOWN DLEFT DRIGHT, .tap / .hold)", k, value);
         return true;
@@ -398,7 +398,7 @@ void save_ini(FILE *f)
     ensure_pad_defaults();
     fprintf(f, "pad_sticks = %s\n", g_cfg.pad_southpaw ? "southpaw" : "normal");
     for (int i = 0; i < kCount; i++)
-        if (i != kCheat) fprintf(f, "pad_%s = %s\n", kActions[i].ini, pad_text(g_pad[i]).c_str());
+        fprintf(f, "pad_%s = %s\n", kActions[i].ini, pad_text(g_pad[i]).c_str());
 }
 
 void script_hold(const std::string &name)
@@ -460,54 +460,42 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
         return !g_stale[k];
     };
 
-    // The cheat menu (input/cheats.cpp): its key opens and closes it in play; while it is open, arrows / Enter / Esc
-    // drive it and nothing reaches the game. Keys still down when it closes wait for a release.
-    {
-        bool cheat_key = false;
-        for (int s = 0; s < kSlots; s++) cheat_key |= held(g_keys[kCheat][s]);
-        static bool cheat_was;
-        if (play && cheat_key && !cheat_was) cheats::toggle_menu();
-        cheat_was = cheat_key;
-        if (!play && cheats::menu_open()) cheats::toggle_menu();
-        if (cheats::menu_open()) {
-            static const uint16_t kKeys[6] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE};
-            static bool was[6];
-            for (int i = 0; i < 6; i++) {
-                bool h = raw_held(kKeys[i], focus, 0);
-                if (h && !was[i]) cheats::menu_key(i + 1);
-                was[i] = h;
-            }
-            if (!cheats::menu_open()) // closed now: the keys still down must not act in the game
-                for (int i = 0; i < kCount; i++)
-                    for (int s = 0; s < kSlots; s++)
-                        if (raw_held(g_keys[i][s], focus, mouse)) g_stale[g_keys[i][s]] = true;
-            if (!cheats::menu_open())
-                for (uint16_t k : kKeys)
-                    if (raw_held(k, focus, 0)) g_stale[k] = true;
-            buttons = 0;
-            memset(analog, 0, 8);
-            lx = ly = rx = ry = 0;
-            g_script.reset();
-            return;
-        }
-    }
-
-    Pad p;
-    const int32_t *table = game_table();
-    bool pause_down = false, sprint_down = false, grenade_down = false;
-    bool sprint_key = false;
-    for (int s = 0; s < kSlots; s++) sprint_key |= held(g_keys[kSprint][s]);
-    // The port's controller layout (`pad_layout = cod`, the default; g_pad, see above): in play the pad's buttons are
-    // turned into actions like keys, through the game's binding table; the sticks stay as they are (left move, right
-    // look; swapped with pad_sticks = southpaw). Menus, pauses and cutscenes get the pad unchanged.
+    // The pad, read before anything uses it. The port's controller layout (`pad_layout = cod`, the default; g_pad, see
+    // above): in play the pad's buttons are turned into actions like keys, through the game's binding table; the
+    // sticks stay as they are (left move, right look; swapped with pad_sticks = southpaw). Menus, pauses and cutscenes
+    // get the pad unchanged. A combo ("L3+R3") acts while both buttons are held; its buttons are "consumed" until
+    // released, so they do not also do their own actions. After the cheat menu closes, the pad counts as released
+    // until every button is let go (g_pad_stale), so the button that closed it does not act in the game.
+    const uint16_t raw_buttons = buttons;
+    uint8_t raw_analog[8];
+    memcpy(raw_analog, analog, 8);
+    static bool pad_stale;
+    bool any_pad = false;
+    for (int b = 0; b < kPadButtons; b++) any_pad |= pad_button(b, raw_buttons, raw_analog);
+    if (pad_stale && !any_pad) pad_stale = false;
     bool pad_down[kCount] = {};
-    if (play && table && g_cfg.pad_cod) {
+    const int32_t *table = game_table();
+    bool layout = play && table && g_cfg.pad_cod;
+    if (play && !pad_stale) {
         ensure_pad_defaults();
         static ULONGLONG since[kPadButtons]; // when each button went down (0 = up)
-        bool tapped[kPadButtons] = {}, long_held[kPadButtons] = {}, now_down[kPadButtons] = {};
+        static bool consumed[kPadButtons];   // part of a combo that was held: ignored until released
+        bool raw_down[kPadButtons], now_down[kPadButtons] = {}, tapped[kPadButtons] = {}, long_held[kPadButtons] = {};
+        for (int b = 0; b < kPadButtons; b++) raw_down[b] = pad_button(b, raw_buttons, raw_analog);
+        for (int i = 0; i < kCount; i++)
+            for (const PadBind &pb : g_pad[i])
+                if (pb.button >= 0 && pb.button2 >= 0 && raw_down[pb.button] && raw_down[pb.button2]) {
+                    pad_down[i] = true;
+                    consumed[pb.button] = consumed[pb.button2] = true;
+                }
         ULONGLONG t = GetTickCount64();
         for (int b = 0; b < kPadButtons; b++) {
-            now_down[b] = pad_button(b, buttons, analog);
+            if (!raw_down[b]) consumed[b] = false;
+            if (consumed[b]) {
+                since[b] = 0; // no tap or hold from a combo's button
+                continue;
+            }
+            now_down[b] = raw_down[b];
             if (now_down[b]) {
                 if (!since[b]) since[b] = t;
                 long_held[b] = t - since[b] >= kTapMs;
@@ -518,13 +506,63 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
         }
         for (int i = 0; i < kCount; i++)
             for (const PadBind &pb : g_pad[i]) {
-                if (pb.button < 0) continue;
+                if (pb.button < 0 || pb.button2 >= 0) continue;
                 pad_down[i] |= pb.mode == kTap ? tapped[pb.button] : pb.mode == kHold ? long_held[pb.button] : now_down[pb.button];
             }
-        buttons = 0; // the game sees only what the layout presses
+        if (!layout) // the game's own layouts: only the cheat menu's buttons are the port's
+            for (int i = 0; i < kCount; i++)
+                if (i != kCheat) pad_down[i] = false;
+    }
+    if (play && (layout || pad_stale)) { // the game sees only what the layout presses
+        buttons = 0;
         memset(analog, 0, 8);
     }
-    if (play && g_cfg.pad_southpaw) {
+
+    // The cheat menu (input/cheats.cpp): its key or pad buttons open and close it in play; while it is open, arrows /
+    // Enter / Esc or the D-pad / A / B drive it and nothing reaches the game. Keys still down when it closes wait for
+    // a release, and so does the pad.
+    {
+        bool cheat_key = pad_down[kCheat];
+        for (int s = 0; s < kSlots; s++) cheat_key |= held(g_keys[kCheat][s]);
+        static bool cheat_was;
+        bool was_open = cheats::menu_open();
+        if (play && cheat_key && !cheat_was) cheats::toggle_menu();
+        cheat_was = cheat_key;
+        if (!play && cheats::menu_open()) cheats::toggle_menu();
+        if (cheats::menu_open()) {
+            static const uint16_t kKeys[6] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE};
+            static const int kPadNav[6] = {12, 13, 14, 15, 0, 1}; // D-pad up, down, left, right, A, B
+            static bool was[6];
+            for (int i = 0; i < 6; i++) {
+                bool h = raw_held(kKeys[i], focus, 0) || (!pad_stale && pad_button(kPadNav[i], raw_buttons, raw_analog));
+                if (h && !was[i] && was_open) cheats::menu_key(i + 1); // not the poll that opened it
+                was[i] = h;
+            }
+            if (!cheats::menu_open()) // closed now: the keys still down must not act in the game
+                for (int i = 0; i < kCount; i++)
+                    for (int s = 0; s < kSlots; s++)
+                        if (raw_held(g_keys[i][s], focus, mouse)) g_stale[g_keys[i][s]] = true;
+            if (!cheats::menu_open())
+                for (uint16_t k : kKeys)
+                    if (raw_held(k, focus, 0)) g_stale[k] = true;
+            if (!cheats::menu_open()) pad_stale = true;
+            buttons = 0;
+            memset(analog, 0, 8);
+            lx = ly = rx = ry = 0;
+            g_script.reset();
+            return;
+        }
+        if (was_open) { // closed by its key or pad buttons this poll
+            pad_stale = true;
+            buttons = 0;
+            memset(analog, 0, 8);
+        }
+    }
+
+    Pad p;
+    bool pause_down = false, sprint_down = false, grenade_down = false;
+    bool sprint_key = false;
+    for (int s = 0; s < kSlots; s++) sprint_key |= held(g_keys[kSprint][s]);    if (play && g_cfg.pad_southpaw) {
         std::swap(lx, rx);
         std::swap(ly, ry);
     }
