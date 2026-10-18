@@ -1,6 +1,7 @@
 // black-config.exe: the controller layout of the BLACK PC port, which does not fit the in-game menus, written to
 // black.ini next to it (the folder black.exe keeps its files in): pad_<action> lines with up to three pad buttons per
-// action, each pressed, tapped or held (input/action_list.h has the actions and the defaults), the layout switch
+// action, each pressed, tapped or held (input/action_list.h has the actions and the defaults; kPresets below adds
+// layouts modelled on other shooters), the layout switch
 // (the port's or the game's own), southpaw sticks and the vibration strength. Every other setting is in the game's
 // PC SETTINGS pages. Lines the tool does not know are kept as they are. The game reads black.ini when it starts and
 // writes it when its settings change and when it closes, so the tool asks for the game to be closed first.
@@ -131,9 +132,30 @@ Brand detect_brand(bool *found)
     return best;
 }
 
+// ---- layout presets ----
+// Familiar layouts from other shooters, mapped onto BLACK's actions by where those games put the same thing (BLACK
+// has no jump, so A is mostly free). Actions not listed get no button. "BLACK (original)" switches to the game's own
+// controller layouts instead of filling the grid.
+struct Preset {
+    const wchar_t *name;
+    std::vector<std::pair<const char *, const char *>> buttons; // empty: the game's own layouts
+};
+const std::vector<std::pair<const char *, const char *>> kCommon = {
+    {"fire", "RT"}, {"aim", "LT"}, {"sprint", "L3"}, {"reload", "X.tap"}, {"use", "X.hold"}, {"next_weapon", "Y"},
+    {"prev_weapon", "DRIGHT"}, {"firing_mode", "DUP"}, {"suppressor", "DLEFT"}, {"pause", "START"}, {"objectives", "BACK"},
+};
+const Preset kPresets[] = {
+    {L"Call of Duty (default)", {{"grenade", "RB"}, {"melee", "R3"}, {"crouch", "B"}, {"health_pack", "LB,A,DDOWN"}}},
+    {L"Battlefield", {{"grenade", "RB"}, {"melee", "R3"}, {"crouch", "B"}, {"health_pack", "LB,DDOWN"}}},
+    {L"Halo Infinite", {{"grenade", "LB"}, {"melee", "B"}, {"crouch", "R3"}, {"health_pack", "RB,DDOWN"}}},
+    {L"Destiny 2", {{"grenade", "LB"}, {"melee", "RB"}, {"crouch", "B"}, {"health_pack", "DDOWN"}}},
+    {L"BLACK (original game layout)", {}},
+};
+
 // ---- window ----
 
-enum : int { ID_SAVE = 101, ID_PLAY, ID_CLOSE, ID_DEFAULTS, ID_CLEAR, ID_LAYOUT, ID_STICKS, ID_RUMBLE, ID_NAMES, ID_PAD0 = 1000 };
+enum : int { ID_SAVE = 101, ID_PLAY, ID_CLOSE, ID_DEFAULTS, ID_CLEAR, ID_LAYOUT, ID_STICKS, ID_RUMBLE, ID_NAMES, ID_PRESET,
+             ID_PAD0 = 1000 };
 constexpr int kRumble[] = {0, 25, 50, 75, 100};
 constexpr UINT_PTR kDetectTimer = 1;
 const wchar_t kTitle[] = L"BLACK: Full Auto – Controller Layout";
@@ -144,7 +166,7 @@ HWND g_group_settings, g_group_mapping;
 HFONT g_font, g_bold, g_big;
 float g_dpi = 1.0f;
 HWND g_pad[kActionCount][kPadSlots], g_action[kActionCount];
-HWND g_layout, g_sticks, g_rumble, g_names;
+HWND g_layout, g_sticks, g_rumble, g_names, g_preset, g_preset_label;
 HWND g_head[8], g_top_label[4], g_buttons[5]; // column headers; the settings' labels; the push buttons
 Brand g_brand = kXbox;      // whose names the lists show
 Brand g_detected_brand = kXbox;
@@ -305,7 +327,11 @@ void build()
         for (int s = 0; s < kPadSlots; s++)
             g_pad[a][s] = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_PAD0 + a * kPadSlots + s);
     }
-    g_buttons[0] = add(L"BUTTON", L"Restore Defaults", BS_PUSHBUTTON | WS_TABSTOP, ID_DEFAULTS);
+    g_preset_label = label(L"Preset:");
+    g_preset = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_PRESET);
+    for (const Preset &p : kPresets) SendMessageW(g_preset, CB_ADDSTRING, 0, (LPARAM)p.name);
+    SendMessageW(g_preset, CB_SETCURSEL, 0, 0);
+    g_buttons[0] = add(L"BUTTON", L"Apply Preset", BS_PUSHBUTTON | WS_TABSTOP, ID_DEFAULTS);
     g_buttons[1] = add(L"BUTTON", L"Clear All", BS_PUSHBUTTON | WS_TABSTOP, ID_CLEAR);
     g_note = label(L"PlayStation and Nintendo controllers need Steam Input, DS4Windows or a similar XInput driver. The "
                    L"layout, stick and vibration settings can also be changed in the game under PC Settings > Controls.");
@@ -362,8 +388,10 @@ void layout(int w)
         for (int s = 0; s < kPadSlots; s++) place(g_pad[a][s], x + name_w + 6 + s * (list_w + 6), yy, list_w, 360);
     }
     y += rows() * kRowH + 8;
-    place(g_buttons[0], in, y, 150, 28);
-    place(g_buttons[1], in + 160, y, 110, 28);
+    place(g_preset_label, in, y + 6, 52, 20);
+    place(g_preset, in + 54, y + 2, 260, 320);
+    place(g_buttons[0], in + 326, y, 130, 28);
+    place(g_buttons[1], in + 466, y, 110, 28);
 
     y = kMappingY + mapping_height() + 12;
     place(g_note, m, y, gw, 36);
@@ -400,11 +428,27 @@ LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             }
             return 0;
         case ID_CLOSE: DestroyWindow(h); return 0;
-        case ID_DEFAULTS:
-            for (int a = 0; a < kActionCount; a++)
-                if (g_pad[a][0]) set_pad_row(a, pad_default(a));
-            status(L"Default layout restored. Click Save to keep it.");
+        case ID_DEFAULTS: { // Apply Preset
+            int i = std::clamp((int)SendMessageW(g_preset, CB_GETCURSEL, 0, 0), 0, (int)std::size(kPresets) - 1);
+            const Preset &p = kPresets[i];
+            std::wstring msg = std::wstring(p.name) + L" layout applied. Click Save to keep it.";
+            if (p.buttons.empty()) { // the game's own controller layouts
+                SendMessageW(g_layout, CB_SETCURSEL, 1, 0);
+                status(msg.c_str());
+                return 0;
+            }
+            SendMessageW(g_layout, CB_SETCURSEL, 0, 0);
+            for (int a = 0; a < kActionCount; a++) {
+                if (!g_pad[a][0]) continue;
+                std::string v = "none";
+                for (const auto *list : {&kCommon, &p.buttons})
+                    for (const auto &kv : *list)
+                        if (!strcmp(kv.first, kActions[a].ini)) v = kv.second;
+                set_pad_row(a, v);
+            }
+            status(msg.c_str());
             return 0;
+        }
         case ID_CLEAR:
             for (int a = 0; a < kActionCount; a++)
                 for (int s = 0; s < kPadSlots && g_pad[a][0]; s++) SendMessageW(g_pad[a][s], CB_SETCURSEL, 0, 0);
@@ -413,6 +457,7 @@ LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         case ID_NAMES:
             if (HIWORD(wp) == CBN_SELCHANGE) update_brand(); // only the names: nothing to save
             return 0;
+        case ID_PRESET: return 0; // nothing changes until Apply Preset
         }
         if (HIWORD(wp) == CBN_SELCHANGE) status(L"You have unsaved changes.");
         return 0;
