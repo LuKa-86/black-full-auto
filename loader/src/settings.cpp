@@ -47,6 +47,7 @@ void settings_load()
         else if (k == "effectsnative") g_cfg.effects_native = v != 0;
         else if (k == "fps") g_cfg.fps = atoi(val) == 60 ? 60 : 30;
         else if (k == "widescreen") g_cfg.widescreen = v != 0;
+        else if (k == "ultrawide") g_cfg.ultrawide = std::clamp(atoi(val), 0, 2);
         else if (k == "fullscreen") g_cfg.fullscreen = v != 0;
         else if (k == "gain") g_cfg.gain = std::clamp(v, 0.5f, 3.0f);
         else if (k == "gamma") g_cfg.gamma = std::clamp(v, 0.5f, 3.0f);
@@ -68,7 +69,11 @@ void settings_load()
         else if (k == "look_speed_y") g_cfg.look_y = std::clamp(atoi(val), 25, 400);
         else if (k == "look_curve") g_cfg.look_curve = !strcmp(val, "game") ? 0 : !strcmp(val, "linear") ? 2 : 1;
         else if (k == "look_boost") g_cfg.look_boost = !strcmp(val, "game") ? 0 : !strcmp(val, "off") ? 2 : 1;
-        else if (k == "unfocused")g_cfg.unfocused = std::clamp(atoi(val), 0, 2);
+        else if (k == "blood_log") g_cfg.blood_log = v != 0;
+        else if (k == "blood_colour") g_cfg.blood_colour = std::clamp(atoi(val), 0, 5);
+        else if (k == "lean") g_cfg.lean = std::clamp(atoi(val), 0, 3);
+        else if (k == "enemy_damage") g_cfg.enemy_damage = std::clamp(v, 1.0f, 5.0f);
+        else if (k == "unfocused") g_cfg.unfocused = std::clamp(atoi(val), 0, 2);
         else if (k == "hit_marker") g_cfg.hit_marker = v != 0;
         else if (k == "grenade_warning") g_cfg.grenade_warning = v != 0;
         else if (k == "ammo_warning") g_cfg.ammo_warning = v != 0;
@@ -96,6 +101,7 @@ void settings_save()
     int fps = g_cfg.fps_next ? g_cfg.fps_next : g_cfg.fps; // a menu choice for the next run wins
     bool wide = g_cfg.widescreen_next >= 0 ? g_cfg.widescreen_next != 0 : g_cfg.widescreen;
     fprintf(f, "aa = %d\nfps = %d\nwidescreen = %d\nfullscreen = %d\n", g_cfg.aa ? 1 : 0, fps, wide ? 1 : 0, g_cfg.fullscreen ? 1 : 0);
+    fprintf(f, "ultrawide = %d\n", g_cfg.ultrawide_next >= 0 ? g_cfg.ultrawide_next : g_cfg.ultrawide);
     fprintf(f, "gain = %.2f\ngamma = %.2f\n", g_cfg.gain, g_cfg.gamma);
     fprintf(f, "mouse_sens = %.3f\nmouse_invert = %d\n", g_cfg.mouse_sens, g_cfg.mouse_invert ? 1 : 0);
     fprintf(f, "reverb = %d\nreverb_gain = %.2f\n", g_cfg.reverb ? 1 : 0, g_cfg.reverb_gain);
@@ -112,6 +118,9 @@ void settings_save()
     static const char *const curves[] = {"game", "modern", "linear"}, *const boosts[] = {"game", "fast", "off"};
     fprintf(f, "look_speed_x = %d\nlook_speed_y = %d\nlook_curve = %s\nlook_boost = %s\n", g_cfg.look_x, g_cfg.look_y,
             curves[g_cfg.look_curve], boosts[g_cfg.look_boost]);
+    fprintf(f, "enemy_damage = %.2f\nlean = %d\n", g_cfg.enemy_damage, g_cfg.lean);
+    fprintf(f, "blood_colour = %d\n", g_cfg.blood_colour);
+    if (g_cfg.blood_log) fprintf(f, "blood_log = 1\n");
     fprintf(f, "hit_marker = %d\ngrenade_warning = %d\nammo_warning = %d\n", g_cfg.hit_marker ? 1 : 0,
             g_cfg.grenade_warning ? 1 : 0, g_cfg.ammo_warning ? 1 : 0);
     fprintf(f, "pad_layout = %s\n", g_cfg.pad_cod ? "cod" : "game");

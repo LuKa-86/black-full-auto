@@ -42,6 +42,8 @@ inline const Action kActions[] = {
     {"objectives", L"Show Objectives", 36, {VK_SPACE, 0}},
     {"weapon_1", L"Weapon Slot 1", -1, {'1', 0}}, // switch to that inventory slot (bindings.cpp, select_slot)
     {"weapon_2", L"Weapon Slot 2", -1, {'2', 0}},
+    {"lean_left", L"Lean Left", -1, {0, 0}}, // input/lean.cpp (unbound by default)
+    {"lean_right", L"Lean Right", -1, {0, 0}},
     {"cheat_menu", L"Cheat Menu", -1, {VK_F1, 0}}, // input/cheats.cpp; on the pad L3+R3 by default
 };
 inline constexpr int kActionCount = sizeof kActions / sizeof kActions[0];

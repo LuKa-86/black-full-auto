@@ -32,6 +32,10 @@ off at once and gives you BLACK as it was.
 - **Automatic health pack** when your health drops below a level you choose.
 - **Reload blur switch** to remove the screen blur while reloading.
 - **Weapon slot keys**: 1 and 2 switch straight to a weapon.
+- **Tactical leaning**: lean left and right round corners and shoot from there, in small, medium or large steps.
+  Assign Lean Left and Lean Right in KEY BINDINGS or `black-config.exe` (they have no default buttons).
+- **Damage to enemies**: 1.5, 2 or 3 times the game's, so enemies are less bullet-spongy.
+- **Blood colour**: red, dark red, green, blue or yellow instead of the game's black.
 - **Cheat menu** (F1, or L3 + R3 on a controller): god mode, infinite ammo and grenades, refill health, and any weapon
   the current level has.
 
@@ -63,8 +67,9 @@ off at once and gives you BLACK as it was.
 - **A modern default layout**: RT fire, LT aim, RB grenade, X to reload (tap) or use (hold), B crouch, Y next weapon,
   L3 sprint and R3 melee.
 - **`black-config.exe`** for your own layout: up to three buttons per action, including LB, RB, L3, R3 and the D-pad,
-  each as a press, tap or hold, plus two-button combos such as L3 + R3. It has presets based on Call of Duty, Battlefield, Halo Infinite and Destiny 2, shows
-  Xbox, PlayStation or Nintendo button names for the controller it detects, and offers southpaw sticks.
+  each as a press, tap or hold, plus two-button combos such as L3 + R3. It has presets based on Call of Duty,
+  Battlefield, Halo Infinite and Destiny 2, shows Xbox, PlayStation or Nintendo button names for the controller it
+  detects, offers southpaw sticks, and scrolls on smaller screens.
 - **Modern stick look**: the right stick turns faster when pushed part of the way, reaches full speed sooner and looks
   up and down faster. Turn and up/down speed, the stick response and the turn boost can be set in `black-config.exe`
   (Original gives the game's own feel).
@@ -74,9 +79,20 @@ off at once and gives you BLACK as it was.
   <img src="docs/images/black-config.png" alt="black-config.exe, the controller layout tool" width="80%">
 </p>
 
+### Display
+
+- **Ultrawide**: 21:9 and 32:9 as well as 16:9 and 4:3 (PC SETTINGS > DISPLAY > ASPECT RATIO, from the next start).
+  The view widens at the sides, while the HUD stays a 16:9 block in the middle and the movies keep their shape with
+  black bars.
+
+<p align="center">
+  <img src="docs/images/ultrawide.jpg" alt="21:9 ultrawide" width="90%">
+</p>
+
 ### Settings and other changes
 
-- **Every setting in the game's own menus**, with new HUD and GAMEPLAY pages.
+- **Every setting in the game's own menus**, with new HUD, GAMEPLAY and MORE GAMEPLAY pages, from both the main menu
+  and the pause menu.
 - **Settings preset**: PORT DEFAULTS or ORIGINAL GAME in one step.
 - **In background**: carry on, mute, or mute and pause when you switch to another window.
 - **Fix**: quick mouse clicks between two input polls are no longer lost.
@@ -91,6 +107,15 @@ Any render resolution up to 4K and beyond, anti-aliasing, 16:9 widescreen or 4:3
 the original 30 fps, mouse look, rebindable keys, XInput controllers, borderless fullscreen, room reverb, the game's
 own brightness and gamma, skippable movies, and fixes for flickering seams and blur artefacts that the Xbox's low
 resolution used to hide.
+
+## Version history
+
+- **1.1**: tactical leaning, damage to enemies, blood colour, ultrawide 21:9 and 32:9, the modern right-stick feel with
+  its settings in `black-config.exe`, aspect ratio and frame rate in the pause menu, and black-config scrolling on
+  smaller screens.
+- **1.0**: the first release: sprint, hold to aim, faster reloads, grenade cooking, automatic health pack, weapon slot
+  keys, the HUD extras, the cheat menu (also on a controller), `black-config.exe` with layout presets, and the
+  ORIGINAL GAME preset.
 
 ## Requirements
 
@@ -151,6 +176,7 @@ PC SETTINGS > CONTROLS > KEY BINDINGS.
 | Melee | F | R3 |
 | Next / previous weapon | mouse wheel | Y / D-pad right |
 | Weapon slot 1 / 2 | 1 / 2 | |
+| Lean left / right | (assign in KEY BINDINGS) | (assign in black-config) |
 | Firing mode / suppressor | Z / Q | D-pad up / D-pad left |
 | Health pack | X | LB, A or D-pad down |
 | Objectives / pause | Space / Esc | Back / Start |
@@ -168,10 +194,11 @@ right to change a setting and select to open a page marked ›. Changes apply im
 | Page | Settings |
 |---|---|
 | VIDEO | resolution, anti-aliasing, field of view, brightness, gamma, fullscreen |
-| DISPLAY | aspect ratio and frame rate (main menu only, applied at the next start), seam filling, effects at Xbox size, crosshair, HUD › |
+| DISPLAY | aspect ratio (16:9, 4:3, 21:9, 32:9) and frame rate (both applied at the next start), seam filling, effects at Xbox size, crosshair, HUD › |
 | › HUD | crosshair colour, health percentage, enemy markers, hit marker, grenade warning, reload prompt |
 | AUDIO AND GAME | room reverb, in background, auto-aim, skip any movie, GAMEPLAY ›, settings preset |
-| › GAMEPLAY | sprint speed, automatic health pack, aim (toggle or hold), reload speed, reload blur, grenade cooking |
+| › GAMEPLAY | sprint speed, automatic health pack, aim (toggle or hold), reload speed, grenade cooking, MORE GAMEPLAY › |
+| › MORE GAMEPLAY | damage to enemies, lean, blood colour, reload blur |
 | CONTROLS | mouse sensitivity, invert mouse, key bindings ›, controller layout, stick layout, vibration |
 
 The field of view is horizontal, in degrees (the game's is 70; 86 shows the same height as 4:3). Aiming, cutscenes

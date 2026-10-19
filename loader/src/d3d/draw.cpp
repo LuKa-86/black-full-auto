@@ -9,6 +9,7 @@
 #include "d3d/pshader.h"
 #include "d3d/pushbuf.h"
 #include "d3d/state.h"
+#include "input/hits.h"
 #include "d3d/vshader.h"
 #include "fov.h"
 #include "perf.h"
@@ -20,6 +21,8 @@
 #include <cstring>
 #include <unordered_map>
 #include <vector>
+
+extern "C" volatile uint8_t g_hud_2d; // set while the game draws a HUD / text batch (fov.cpp)
 
 namespace xd3d {
 
@@ -913,6 +916,96 @@ void hide_game_crosshair(uint32_t prim, uint32_t count, uint8_t *verts, uint32_t
     }
 }
 
+// Ultrawide: the HUD, its text and the objective messages (FUN_000D4C50's batches, marked by fov.cpp's thunk) are
+// laid out for 16:9, so their x is pulled towards the centre by 1.778 / aspect and they stay a 16:9 block in the
+// middle of the wider picture. Only on the 640-wide screen targets (not the small effect buffers), and not for
+// draws that span the whole width (fades, full-screen overlays), which keep filling the picture.
+void hud_squeeze(uint32_t count, uint8_t *verts, uint32_t stride)
+{
+    if (!g_hud_2d || !g_cfg.widescreen || !g_cfg.ultrawide || !count) return;
+    float vp[8];
+    viewport_transform(vp, vp + 4); // half the viewport's width: 320 on the screen targets
+    if (std::fabs(vp[0] - 320.0f) > 1.0f) return;
+    float k = (16.0f / 9.0f) / picture_aspect(), x0 = 1e9f, x1 = -1e9f;
+    for (uint32_t i = 0; i < count; i++) {
+        float x = *(const float *)(verts + (size_t)i * stride);
+        x0 = std::min(x0, x), x1 = std::max(x1, x);
+    }
+    if (x0 <= 1.0f && x1 >= 639.0f) return;
+    for (uint32_t i = 0; i < count; i++) {
+        float *x = (float *)(verts + (size_t)i * stride);
+        *x = 320.0f + (*x - 320.0f) * k;
+    }
+}
+
+// Blood colour (`blood_colour`, PC SETTINGS > GAMEPLAY > MORE GAMEPLAY). The blood is particles drawn tex x diffuse with
+// normal alpha blending, in two textures (by contents hash, the same in every level):
+// - 0x507843EA, the spray: tinted black to dark grey (r = g = b, 0 to about 0.12). Found with `blood_log` in the
+//   user's play: it appeared 0.02 s after every one of 20 hits and lasted 1-2 s.
+// - 0x51BCDC94, a 16 x 16 blob tinted dark brown (10, 7, 4) / 255, seen after some hits.
+// Their tint becomes the chosen colour, shaded a little by the original's brightness (the original is often pure
+// black, so its brightness alone would leave it black); the alpha, and so the fade, is kept. Colours that are not
+// grey or brown (blue over red) are left alone. The converted particle vertices carry the colour in floats 4-7.
+void blood_colour(uint32_t count, uint8_t *verts, uint32_t stride)
+{
+    static const float kTint[][3] = {{0, 0, 0}, {0.70f, 0.04f, 0.03f}, {0.38f, 0.02f, 0.015f}, {0.25f, 0.65f, 0.06f},
+                                     {0.10f, 0.25f, 0.75f}, {0.75f, 0.62f, 0.06f}};
+    int c = g_cfg.blood_colour;
+    if (c <= 0 || c >= (int)std::size(kTint) || !count || stride < 32 || !g_st.textures[0]) return;
+    uint32_t hash = texture_hash((Resource *)g_st.textures[0]);
+    float ref = hash == 0x507843EA ? 0.12f : hash == 0x51BCDC94 ? 10.0f / 255.0f : 0.0f; // the original's brightest
+    if (ref == 0.0f) return;
+    for (uint32_t i = 0; i < count; i++) {
+        float *v = (float *)(verts + (size_t)i * stride) + 4;
+        if (v[2] > v[0] * 1.2f + 0.004f) continue; // not grey or brown: leave it
+        float s = 0.65f + 0.35f * std::min(1.0f, std::max({v[0], v[1], v[2]}) / ref);
+        for (int k = 0; k < 3; k++) v[k] = kTint[c][k] * s;
+    }
+}
+
+// `blood_log = 1` in black.ini (not in the menus), to find the blood effect in normal play: one line per frame in
+// play with every non-indexed draw outside the HUD, grouped by texture contents hash and destination blend, with its
+// vertex count and the colour (floats 4-7) of its first vertex. Lined up with the [hits] lines afterwards.
+struct BloodKey {
+    uint32_t hash, dst, verts;
+    float c[4];
+};
+std::vector<BloodKey> g_blood_frame;
+uint32_t g_blood_frame_no;
+
+void blood_flush()
+{
+    if (g_blood_frame.empty()) return;
+    std::string s;
+    for (const BloodKey &k : g_blood_frame) {
+        char b[96];
+        snprintf(b, sizeof b, " %08x/%x:%u(%.2f,%.2f,%.2f,%.2f)", k.hash, k.dst, k.verts, k.c[0], k.c[1], k.c[2], k.c[3]);
+        s += b;
+    }
+    logf("[bloodlog] f%u%s", g_blood_frame_no, s.c_str());
+    g_blood_frame.clear();
+}
+
+void blood_log(const char *, const DrawCtx &ctx, uint32_t, uint32_t count, const void *verts, uint32_t stride)
+{
+    if (!g_cfg.blood_log || g_hud_2d || !g_st.textures[0]) return;
+    uint32_t now = g_frame_count.load();
+    if (now != g_blood_frame_no) {
+        blood_flush();
+        g_blood_frame_no = now;
+    }
+    uint32_t hash = texture_hash((Resource *)g_st.textures[0]), dst = render_state()[XRS_DESTBLEND];
+    for (BloodKey &k : g_blood_frame)
+        if (k.hash == hash && k.dst == dst) {
+            k.verts += count;
+            return;
+        }
+    if (g_blood_frame.size() >= 40) return;
+    BloodKey k = {hash, dst, count, {0, 0, 0, 0}};
+    if (verts && stride >= 32 && ctx.path == Path::Prog) memcpy(k.c, (const float *)verts + 4, 16);
+    g_blood_frame.push_back(k);
+}
+
 // ---- HLE draw functions ----
 
 void __stdcall D3DDevice_DrawVerticesUP(uint32_t PrimitiveType, uint32_t VertexCount, const void *pVertexStreamZeroData,
@@ -926,11 +1019,15 @@ void __stdcall D3DDevice_DrawVerticesUP(uint32_t PrimitiveType, uint32_t VertexC
     if (ctx.path == Path::Prog) {
         uint32_t stride = convert_vertices(ctx.vs, 0, VertexCount, (const uint8_t *)pVertexStreamZeroData, VertexStreamZeroStride);
         hide_game_crosshair(PrimitiveType, VertexCount, (uint8_t *)g_conv.data(), stride);
+        hud_squeeze(VertexCount, (uint8_t *)g_conv.data(), stride);
+        blood_colour(VertexCount, (uint8_t *)g_conv.data(), stride);
+        blood_log("UP", ctx, PrimitiveType, VertexCount, g_conv.data(), stride);
         debug_draw("DrawVerticesUP", ctx, PrimitiveType, VertexCount, g_conv.data(), stride / 4);
         set_decl(host3d::dev(), decl_for(ctx.vs));
         draw_up(PrimitiveType, VertexCount, g_conv.data(), stride);
         return;
     }
+    blood_log("UP", ctx, PrimitiveType, VertexCount, pVertexStreamZeroData, VertexStreamZeroStride);
     debug_draw("DrawVerticesUP", ctx, PrimitiveType, VertexCount, (const float *)pVertexStreamZeroData, VertexStreamZeroStride / 4);
     draw_up(PrimitiveType, VertexCount, scale_rhw(ctx, pVertexStreamZeroData, 0, VertexCount, VertexStreamZeroStride),
             VertexStreamZeroStride);
@@ -945,6 +1042,7 @@ void __stdcall D3DDevice_DrawVertices(uint32_t PrimitiveType, uint32_t StartVert
     if (!begin_draw(ctx)) return;
     if (ctx.path == Path::Prog) {
         uint32_t stride = convert_vertices(ctx.vs, StartVertex, VertexCount, nullptr, 0);
+        blood_log("V", ctx, PrimitiveType, VertexCount, g_conv.data(), stride);
         debug_draw("DrawVertices", ctx, PrimitiveType, VertexCount, g_conv.data(), stride / 4);
         set_decl(host3d::dev(), decl_for(ctx.vs));
         draw_up(PrimitiveType, VertexCount, g_conv.data(), stride);
@@ -954,6 +1052,7 @@ void __stdcall D3DDevice_DrawVertices(uint32_t PrimitiveType, uint32_t StartVert
     const uint8_t *base = stream_data(0);
     uint32_t stride = g_st.streams[0].stride;
     if (!base || !stride) return;
+    blood_log("V", ctx, PrimitiveType, VertexCount, base + (size_t)StartVertex * stride, stride);
     draw_up(PrimitiveType, VertexCount, scale_rhw(ctx, base, StartVertex, VertexCount, stride) + (size_t)StartVertex * stride, stride);
 }
 

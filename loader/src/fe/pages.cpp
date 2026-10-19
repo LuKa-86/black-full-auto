@@ -312,7 +312,6 @@ std::vector<RowSpec> group_rows(const pcset::Group &g, bool pause)
 {
     std::vector<RowSpec> out;
     for (int n : g.rows) {
-        if (pause && pcset::restart_only(n)) continue; // applies at the next start: main menu only
         std::string value = "&PC_V" + std::to_string(fevar::kValue + (int)out.size());
         if (const char *page = pcset::link(n)) out.push_back({RowSpec::Link, n, pcset::label(n), "", pause ? ingame(page) : page});
         else out.push_back({pcset::is_slider(n) ? RowSpec::Slider : RowSpec::Choice, n, pcset::label(n), value, ""});

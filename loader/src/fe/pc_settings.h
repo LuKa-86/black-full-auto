@@ -25,7 +25,7 @@ void refresh_sliders();             // externObject.FEPCS<n>: every slider's pos
 bool is_slider(int n);              // a bullet bar (26 positions) instead of a list of choices
 int slider_pos(int n);              // the slider's position, 0-100 (also given to the page as externObject.FEPCS<n>)
 void slide(int n, float pos);       // a slider moved to pos (0-100)
-bool restart_only(int n);           // applies at the next start: on the main menu's pages, not the pause menu's
+bool restart_only(int n);           // applies at the next start (aspect ratio, frame rate); shown on both menus
 const char *link(int n);            // a row that opens a page (KEY BINDINGS, a sub-page), or nullptr
 
 } // namespace pcset

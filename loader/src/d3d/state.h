@@ -70,6 +70,7 @@ DWORD conv_colorwrite(uint32_t v);
 
 // ---- textures (texture.cpp) ----
 IDirect3DBaseTexture9 *host_texture(Resource *r, Palette *pal); // upload/cached host copy
+uint32_t texture_hash(const Resource *r); // the contents hash of the cached host copy (0 before its first upload)
 void texture_mark_dirty(const Resource *r);
 void texture_forget(const Resource *r);
 uint32_t texture_level_offset(const PixelContainer *pc, uint32_t face, uint32_t level, uint32_t *pitch, uint32_t *w,

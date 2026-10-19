@@ -69,6 +69,7 @@ const float kReverb[] = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f}; // 0 = off
 const float kSprint[] = {0.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f}; // 0 = off
 const float kHeal[] = {0.0f, 0.2f, 0.3f, 0.4f, 0.5f};     // 0 = off
 const float kReload[] = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f};  // 1 = the original
+const float kDamage[] = {1.0f, 1.5f, 2.0f, 3.0f};          // damage to enemies, 1 = the original
 
 template <size_t N> int nearest(const float (&list)[N], float v)
 {
@@ -91,10 +92,12 @@ struct Preset {
     int unfocused, rumble;
     bool weapon_keys; // 1 and 2 on WEAPON SLOT 1 / 2
     int look_x, look_y, look_curve, look_boost; // controller look (black-config.exe)
+    float enemy_damage;
+    int lean, blood_colour;
 };
 const Preset kPresets[2] = {
-    {0, 1.5f, 0.0f, 1.5f, 70.0f, false, true, true, false, true, true, false, true, true, true, true, false, 1, 100, true, 100, 175, 1, 1},
-    {0, 0.0f, 0.0f, 1.0f, 70.0f, false, true, false, true, false, false, false, false, false, false, false, false, 0, 100, false, 100, 100, 0, 0},
+    {0, 1.5f, 0.0f, 1.5f, 70.0f, false, true, true, false, true, true, false, true, true, true, true, false, 1, 100, true, 100, 175, 1, 1, 1.0f, 2, 0},
+    {0, 0.0f, 0.0f, 1.0f, 70.0f, false, true, false, true, false, false, false, false, false, false, false, false, 0, 100, false, 100, 100, 0, 0, 1.0f, 0, 0},
 };
 
 bool weapon_keys_set()
@@ -113,7 +116,8 @@ bool preset_matches(const Preset &p)
            g_cfg.grenade_warning == p.grenade_warning && g_cfg.ammo_warning == p.ammo_warning && g_cfg.pad_cod == p.pad_cod &&
            g_cfg.pad_southpaw == p.pad_southpaw && g_cfg.unfocused == p.unfocused && g_cfg.rumble == p.rumble &&
            weapon_keys_set() == p.weapon_keys && g_cfg.look_x == p.look_x && g_cfg.look_y == p.look_y && g_cfg.look_curve == p.look_curve &&
-           g_cfg.look_boost == p.look_boost;
+           g_cfg.look_boost == p.look_boost && close_to(g_cfg.enemy_damage, p.enemy_damage) && g_cfg.lean == p.lean &&
+           g_cfg.blood_colour == p.blood_colour;
 }
 
 int preset_get()
@@ -150,12 +154,17 @@ void preset_set(int i)
     g_cfg.look_y = p.look_y;
     g_cfg.look_curve = p.look_curve;
     g_cfg.look_boost = p.look_boost;
+    g_cfg.enemy_damage = p.enemy_damage;
+    g_cfg.lean = p.lean;
+    g_cfg.blood_colour = p.blood_colour;
     bindings::set_key(bindings::action_index("weapon_1"), 0, p.weapon_keys ? '1' : 0);
     bindings::set_key(bindings::action_index("weapon_2"), 0, p.weapon_keys ? '2' : 0);
 }
 
 int shown_fps() { return g_cfg.fps_next ? g_cfg.fps_next : g_cfg.fps; }
 bool shown_wide() { return g_cfg.widescreen_next >= 0 ? g_cfg.widescreen_next != 0 : g_cfg.widescreen; }
+int aspect_index(bool wide, int ultra) { return !wide ? 1 : ultra == 1 ? 2 : ultra == 2 ? 3 : 0; }
+int shown_aspect() { return aspect_index(shown_wide(), g_cfg.ultrawide_next >= 0 ? g_cfg.ultrawide_next : g_cfg.ultrawide); }
 
 struct Row {
     const char *label;
@@ -183,12 +192,17 @@ const Row kRows[] = {
     {"FULLSCREEN", 2, [] { return (int)host3d::fullscreen(); }, [](int i) { host3d::set_fullscreen(i != 0); },
      [](int i) { return on_off(i); }},
     // DISPLAY
-    {"ASPECT RATIO", 2, [] { return (int)!shown_wide(); },
-     [](int i) {
-         bool wide = i == 0;
+    {"ASPECT RATIO", 4, [] { return shown_aspect(); },
+     [](int i) { // 0 16:9, 1 4:3, 2 21:9, 3 32:9
+         bool wide = i != 1;
+         int ultra = i == 2 ? 1 : i == 3 ? 2 : 0;
          g_cfg.widescreen_next = wide == g_cfg.widescreen ? -1 : wide;
+         g_cfg.ultrawide_next = ultra == g_cfg.ultrawide ? -1 : ultra;
      },
-     [](int i) { return std::wstring(i == 0 ? L"16:9" : L"4:3") + ((i == 0) != g_cfg.widescreen ? L" (NEXT START)" : L""); }},
+     [](int i) {
+         static const wchar_t *k[] = {L"16:9", L"4:3", L"21:9 ULTRAWIDE", L"32:9 SUPER ULTRAWIDE"};
+         return std::wstring(k[i]) + (i != aspect_index(g_cfg.widescreen, g_cfg.ultrawide) ? L" (NEXT START)" : L"");
+     }},
     {"FRAME RATE", 2, [] { return (int)(shown_fps() == 60); },
      [](int i) {
          int fps = i ? 60 : 30;
@@ -275,9 +289,26 @@ const Row kRows[] = {
     // AUDIO AND GAME: every port addition at once (preset_get / preset_set below)
     {"SETTINGS PRESET", 2, [] { return preset_get(); }, [](int i) { preset_set(i); },
      [](int i) { return std::wstring(i < 0 ? L"CUSTOM" : i ? L"ORIGINAL GAME" : L"PORT DEFAULTS"); }},
+    // MORE GAMEPLAY page (input/damage.cpp, input/lean.cpp)
+    {"DAMAGE TO ENEMIES", 4, [] { return nearest(kDamage, g_cfg.enemy_damage); }, [](int i) { g_cfg.enemy_damage = kDamage[i]; },
+     [](int i) { return i ? number(kDamage[i], L"%.1f X") : std::wstring(L"1.0 X (ORIGINAL)"); }},
+    {"LEAN", 4, [] { return g_cfg.lean; }, [](int i) { g_cfg.lean = i; },
+     [](int i) {
+         static const wchar_t *k[] = {L"OFF", L"SMALL", L"MEDIUM", L"LARGE"};
+         return std::wstring(k[i]);
+     }},
+    // link to the MORE GAMEPLAY page (kMoreLink)
+    {"MORE", 1, [] { return 0; }, [](int) {}, [](int) { return std::wstring(); }},
+    // MORE GAMEPLAY page (d3d/draw.cpp, blood_colour)
+    {"BLOOD COLOUR", 6, [] { return g_cfg.blood_colour; }, [](int i) { g_cfg.blood_colour = i; },
+     [](int i) {
+         static const wchar_t *k[] = {L"ORIGINAL", L"RED", L"DARK RED", L"GREEN", L"BLUE", L"YELLOW"};
+         return std::wstring(k[i]);
+     }},
 };
 constexpr int kRowN = sizeof kRows / sizeof kRows[0];
-constexpr int kKeyBindings = 15, kHudLink = 24, kGameplayLink = 25, kPreset = 35;
+constexpr int kKeyBindings = 15, kHudLink = 24, kGameplayLink = 25, kPreset = 35, kDamageRow = 36, kLeanRow = 37,
+              kMoreLink = 38, kBloodRow = 39;
 
 } // namespace
 
@@ -289,7 +320,8 @@ const std::vector<Group> &groups()
         {"PCGame", "AUDIO AND GAME", {10, 26, 11, 12, kGameplayLink, kPreset}},
         {"PCControls", "CONTROLS", {13, 14, kKeyBindings, 28, 29, 27}},
         {"PCHud", "HUD", {21, 23, 30, 31, 32, 33}, "PCDisplay"},
-        {"PCGameplay", "GAMEPLAY", {17, 18, 19, 22, 16, 34}, "PCGame"},
+        {"PCGameplay", "GAMEPLAY", {17, 18, 19, 22, 34, kMoreLink}, "PCGame"},
+        {"PCMore", "MORE GAMEPLAY", {kDamageRow, kLeanRow, kBloodRow, 16}, "PCGameplay"},
     };
     return g;
 }
@@ -321,7 +353,7 @@ bool is_slider(int n) { return n >= 0 && n < kRowN && kRows[n].slider; }
 
 bool restart_only(int n) { return n == 6 || n == 7; } // aspect ratio, frame rate: read by the game at boot
 
-const char *link(int n) { return n == kKeyBindings ? "PCBindings" : n == kHudLink ? "PCHud" : n == kGameplayLink ? "PCGameplay" : nullptr; }
+const char *link(int n) { return n == kKeyBindings ? "PCBindings" : n == kHudLink ? "PCHud" : n == kGameplayLink ? "PCGameplay" : n == kMoreLink ? "PCMore" : nullptr; }
 
 int slider_pos(int n)
 {

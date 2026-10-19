@@ -37,6 +37,7 @@ namespace {
 
 constexpr int kCount = kActionCount;
 constexpr int kCheat = kCount - 1;
+constexpr int kLeanLeft = kCount - 3, kLeanRight = kCount - 2;
 constexpr int kSprint = 4;
 constexpr int kAim = 6;
 constexpr int kGrenade = 10;
@@ -127,6 +128,7 @@ bool g_was_play;
 bool g_freed_by_esc; // the pause key (or Esc in a menu) let go of the mouse: take it again when play starts
 bool g_release_was_down;
 std::atomic<bool> g_sprint_down; // the sprint key at the last poll in play
+std::atomic<int> g_lean_dir;     // the lean keys at the last poll in play: -1 left, 1 right, 0 neither or both
 std::atomic<uint64_t> g_forced;  // game actions (bit = binding index) to press at the next poll in play
 std::atomic<bool> g_grenade_down; // the grenade key at the last poll in play (held back while cooking)
 
@@ -416,6 +418,7 @@ int take_menu_input()
 bool menu_select_held() { return g_menu_select; }
 
 bool sprint_held() { return g_sprint_down; }
+int lean_dir() { return g_lean_dir; }
 
 void press_game_action(int game)
 {
@@ -561,6 +564,7 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
 
     Pad p;
     bool pause_down = false, sprint_down = false, grenade_down = false;
+    int lean = 0;
     bool sprint_key = false;
     for (int s = 0; s < kSlots; s++) sprint_key |= held(g_keys[kSprint][s]);    if (play && g_cfg.pad_southpaw) {
         std::swap(lx, rx);
@@ -585,6 +589,8 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
         if (!down) continue;
         if (i == kPause) pause_down = true;
         if (i == kSprint) sprint_down = true;
+        if (i == kLeanLeft) lean--;
+        if (i == kLeanRight) lean++;
         if (kActions[i].game < 0) continue; // the port's own action
         int ch = table[kActions[i].game];
         if (ch < 0 || ch >= 24) {
@@ -596,6 +602,7 @@ void apply(uint16_t &buttons, uint8_t analog[8], int16_t &lx, int16_t &ly, int16
         press_channel(ch, p);
     }
     g_sprint_down = sprint_down;
+    g_lean_dir = lean;
     g_grenade_down = grenade_down;
     uint64_t forced = g_forced.exchange(0);
     for (int a = 0; play && table && forced && a < 37; a++) {

@@ -215,7 +215,9 @@ HWND label(const wchar_t *text, HFONT font = nullptr, DWORD align = SS_LEFT)
     return l;
 }
 
-void place(HWND c, int x, int y, int w, int h) { MoveWindow(c, S(x), S(y), S(w), S(h), FALSE); }
+int g_scroll; // how far the window's contents are scrolled up, in pixels (small screens, large text scaling)
+
+void place(HWND c, int x, int y, int w, int h) { MoveWindow(c, S(x), S(y) - g_scroll, S(w), S(h), FALSE); }
 
 // List entries: none, then each button pressed / tapped / held, then the combos (kPadCombos).
 int pad_index(const PadBind &b)
@@ -433,6 +435,13 @@ int content_height() { return kMappingY + mapping_height() + 12 + 54 + 10 + 30 +
 // action's name and three lists of equal width.
 void layout(int w)
 {
+    // Taller than the window (a small screen or large text scaling): the contents scroll (scroll bar, mouse wheel).
+    RECT cr;
+    GetClientRect(g_wnd, &cr);
+    int content = S(content_height()), page = std::max(1, (int)cr.bottom);
+    g_scroll = std::clamp(g_scroll, 0, std::max(0, content - page));
+    SCROLLINFO si = {sizeof si, SIF_RANGE | SIF_PAGE | SIF_POS, 0, content - 1, (UINT)page, g_scroll};
+    SetScrollInfo(g_wnd, SB_VERT, &si, TRUE);
     w = std::max(w, kMinW);
     int m = 20, in = m + 16, gw = w - 2 * m;
     place(g_title, m, 10, gw, 30);
@@ -492,7 +501,8 @@ void layout(int w)
     place(g_buttons[2], w - m - 340, y, 100, 30);
     place(g_buttons[3], w - m - 230, y, 120, 30);
     place(g_buttons[4], w - m - 100, y, 100, 30);
-    InvalidateRect(g_wnd, nullptr, TRUE);
+    // the children too: moved labels draw on a transparent background and would leave copies behind when scrolling
+    RedrawWindow(g_wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
@@ -501,8 +511,38 @@ LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     case WM_SIZE:
         if (g_layout) layout((int)(LOWORD(lp) / g_dpi));
         return 0;
+    case WM_VSCROLL:
+    case WM_MOUSEWHEEL: {
+        int before = g_scroll;
+        if (msg == WM_MOUSEWHEEL) g_scroll -= GET_WHEEL_DELTA_WPARAM(wp) * S(90) / WHEEL_DELTA;
+        else {
+            RECT cr;
+            GetClientRect(h, &cr);
+            switch (LOWORD(wp)) {
+            case SB_LINEUP: g_scroll -= S(30); break;
+            case SB_LINEDOWN: g_scroll += S(30); break;
+            case SB_PAGEUP: g_scroll -= cr.bottom; break;
+            case SB_PAGEDOWN: g_scroll += cr.bottom; break;
+            case SB_TOP: g_scroll = 0; break;
+            case SB_BOTTOM: g_scroll = S(content_height()); break;
+            case SB_THUMBTRACK:
+            case SB_THUMBPOSITION: {
+                SCROLLINFO si = {sizeof si, SIF_TRACKPOS};
+                GetScrollInfo(h, SB_VERT, &si);
+                g_scroll = si.nTrackPos;
+                break;
+            }
+            }
+        }
+        if (g_scroll != before) {
+            RECT cr;
+            GetClientRect(h, &cr);
+            layout((int)(cr.right / g_dpi));
+        }
+        return 0;
+    }
     case WM_GETMINMAXINFO: {
-        RECT r = {0, 0, S(kMinW), S(content_height())};
+        RECT r = {0, 0, S(kMinW), S(360)}; // shorter windows scroll
         AdjustWindowRect(&r, (DWORD)GetWindowLongW(h, GWL_STYLE), FALSE);
         ((MINMAXINFO *)lp)->ptMinTrackSize = {r.right - r.left, r.bottom - r.top};
         return 0;
@@ -596,9 +636,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     wc.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
     wc.lpszClassName = L"BlackConfigWindow";
     RegisterClassW(&wc);
-    DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN; // resizable; the lists widen with the window
+    // No WS_CLIPCHILDREN: the group boxes do not paint their insides, so the window must, or scrolling leaves copies.
+    DWORD style = WS_OVERLAPPEDWINDOW | WS_VSCROLL; // resizable; the lists widen with the window
     RECT r = {0, 0, S(1180), S(content_height())};
     AdjustWindowRect(&r, style, FALSE);
+    RECT work; // no larger than the screen's work area (the contents scroll when they do not fit)
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    r.right = r.left + std::min(r.right - r.left, (LONG)(work.right - work.left));
+    r.bottom = r.top + std::min(r.bottom - r.top, (LONG)(work.bottom - work.top) * 19 / 20);
     g_wnd = CreateWindowExW(0, wc.lpszClassName, kTitle, style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left,
                             r.bottom - r.top, nullptr, nullptr, inst, nullptr);
     build();
@@ -611,6 +656,18 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     ShowWindow(g_wnd, show);
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0)) {
+        // The wheel scrolls the window, even over a list (a closed list would otherwise change its choice);
+        // an open list still scrolls itself.
+        if (m.message == WM_MOUSEWHEEL && m.hwnd != g_wnd) {
+            HWND f = GetFocus();
+            wchar_t cls[16] = {};
+            if (f) GetClassNameW(f, cls, 16);
+            bool open = f && !_wcsicmp(cls, L"ComboBox") && SendMessageW(f, CB_GETDROPPEDSTATE, 0, 0);
+            if (!open) {
+                SendMessageW(g_wnd, WM_MOUSEWHEEL, m.wParam, m.lParam);
+                continue;
+            }
+        }
         if (IsDialogMessageW(g_wnd, &m)) continue;
         TranslateMessage(&m);
         DispatchMessageW(&m);

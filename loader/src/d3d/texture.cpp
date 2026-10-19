@@ -369,6 +369,15 @@ IDirect3DBaseTexture9 *host_texture(Resource *r, Palette *pal)
     return t;
 }
 
+uint32_t texture_hash(const Resource *r)
+{
+    EnterCriticalSection(&g_cs);
+    auto it = g_cache.find((Resource *)r);
+    uint32_t h = it != g_cache.end() ? it->second.hash : 0;
+    LeaveCriticalSection(&g_cs);
+    return h;
+}
+
 void texture_mark_dirty(const Resource *r)
 {
     EnterCriticalSection(&g_cs);

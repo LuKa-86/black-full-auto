@@ -56,3 +56,9 @@ void movies_poll(uint16_t buttons, const uint8_t analog[8], bool enter)
         logf("movies: skipped %s", g_name);
     }
 }
+
+bool movie_playing()
+{
+    const uint8_t *p = player();
+    return p && playing_once(p);
+}

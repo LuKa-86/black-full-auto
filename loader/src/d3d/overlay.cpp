@@ -357,11 +357,14 @@ void health_text(std::vector<TextBatch> &batches, const RECT &pic)
     if (!g_cfg.health_percent) return;
     float f = health_fraction();
     int pct = std::clamp((int)std::lround(f * 100.0f), 0, 100);
-    float sx = (pic.right - pic.left) / 640.0f, sy = (pic.bottom - pic.top) / 480.0f;
+    // The HUD's 640 units span the picture, or its middle 16:9 in ultrawide (the HUD is kept 16:9 there, draw.cpp)
+    float pw = (float)(pic.right - pic.left), hud_w = std::min(pw, (pic.bottom - pic.top) * 16.0f / 9.0f);
+    float left = pic.left + (pw - hud_w) * 0.5f;
+    float sx = hud_w / 640.0f, sy = (pic.bottom - pic.top) / 480.0f;
     Font *font = make_font(std::max(8, (int)std::lround(12.5f * sy))); // about the ammo numbers' height
     if (!font) return;
     std::wstring s = std::to_wstring(pct) + L"%";
-    float right = pic.left + 134.0f * sx, mid = pic.top + 68.0f * sy; // right end of the strip's free part, its middle
+    float right = left + 134.0f * sx, mid = pic.top + 68.0f * sy; // right end of the strip's free part, its middle
     TextBatch b{font, {}};
     D3DCOLOR colour = f < 0.25f ? 0xFFE04030 : 0xFFD8D8D0; // the HUD's light grey; red when low
     text(b, s, right - text_width(*font, s), mid - font->th * 0.5f, colour, std::max(1.0f, std::round(sy * 0.6f)));

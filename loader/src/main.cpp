@@ -14,6 +14,8 @@
 #include "settings.h"
 #include "input/autoaim.h"
 #include "input/cheats.h"
+#include "input/damage.h"
+#include "input/lean.h"
 #include "input/hits.h"
 #include "input/player_extras.h"
 #include "reloadblur.h"
@@ -81,6 +83,7 @@ void usage()
            "                    or native (the window's size at start, the screen's with --fullscreen)\n"
            "  --window WxH      window client size (default: largest size of the game's aspect that fits the screen)\n"
            "  --normal-aspect   4:3 like an original Xbox on a standard TV (default: widescreen 16:9)\n"
+           "  --ultrawide A     21:9 or 32:9 picture (the HUD stays 16:9 in the middle); 16:9 for the default\n"
            "  --fullscreen      start in borderless fullscreen\n"
            "  --fps 30|60       frame rate (default 60; 30 is the original)\n"
            "  --no-reverb       do not mix the room reverb\n"
@@ -90,6 +93,7 @@ void usage()
            "  --rawvideo <file> record the picture as raw BGRX frames from --shot-start for --clip-seconds (default 4)\n"
            "  --mouse-sens K    mouse look sensitivity, K x 0.022 degrees per count (default 2.0)\n"
            "  --mouse-invert    mouse forward looks down\n"
+           "  --enemy-damage K  enemies take K times the game's damage, 1-5 (PC SETTINGS > GAMEPLAY > MORE)\n"
            "  --pad-game-look   the game's own right-stick speed, response and turn boost (black-config.exe sets them)\n"
            "  --autoaim         the game's auto-aim (the view pulling toward enemies), off by default; --no-autoaim\n"
            "  --no-reload-blur  no screen blur while reloading\n"
@@ -173,6 +177,12 @@ bool parse_args()
         }
         else if (a == L"--skip-videos") g_cfg.skip_videos = true;
         else if (a == L"--normal-aspect") { g_cfg.widescreen = false; settings_mark_cli("widescreen"); }
+        else if (a == L"--ultrawide") {
+            std::wstring v;
+            if (!next(v)) return false;
+            g_cfg.ultrawide = v == L"32:9" ? 2 : v == L"21:9" ? 1 : 0;
+            settings_mark_cli("ultrawide");
+        }
         else if (a == L"--fullscreen") { g_cfg.fullscreen = true; settings_mark_cli("fullscreen"); }
         else if (a == L"--no-reverb") { g_cfg.reverb = false; settings_mark_cli("reverb"); }
         else if (a == L"--no-ramp") g_cfg.ramp = false;
@@ -213,7 +223,19 @@ bool parse_args()
         else if (a == L"--enemy-markers") { g_cfg.enemy_markers = true; settings_mark_cli("enemy_markers"); }
         else if (a == L"--no-grenade-cook") { g_cfg.grenade_cook = false; settings_mark_cli("grenade_cook"); }
         else if (a == L"--pad-game-layout") { g_cfg.pad_cod = false; settings_mark_cli("pad_layout"); }
-        else if (a == L"--pad-game-look") {
+        else if (a == L"--enemy-damage") {
+            std::wstring v;
+            if (!next(v)) return false;
+            g_cfg.enemy_damage = std::clamp((float)_wtof(v.c_str()), 1.0f, 5.0f);
+            settings_mark_cli("enemy_damage");
+        } else if (a == L"--blood-log") {
+            g_cfg.blood_log = true;
+        } else if (a == L"--blood-colour") {
+            std::wstring v;
+            if (!next(v)) return false;
+            g_cfg.blood_colour = std::clamp(_wtoi(v.c_str()), 0, 5);
+            settings_mark_cli("blood_colour");
+        } else if (a == L"--pad-game-look") {
             g_cfg.look_x = g_cfg.look_y = 100;
             g_cfg.look_curve = g_cfg.look_boost = 0;
             for (const char *k : {"look_speed_x", "look_speed_y", "look_curve", "look_boost"}) settings_mark_cli(k);
@@ -471,6 +493,8 @@ int run(void *reserve, unsigned reserve_size)
     if (known_build && !xd3d::install_d3d_hooks()) return 1;
     if (known_build) install_timing_patches();
     if (known_build) install_mouselook_patches();
+    if (known_build) install_damage_patch();
+    if (known_build) install_lean_patch();
     if (known_build) install_autoaim_patch();
     if (known_build) install_reload_blur_patch();
     if (known_build) install_player_extras();

@@ -13,6 +13,7 @@
 #include "d3d/pushbuf.h"
 #include "d3d/state.h"
 #include "d3d/vshader.h"
+#include "input/movies.h"
 #include "kernel/kexports.h"
 #include "xthread.h"
 
@@ -133,7 +134,7 @@ bool g_scissor_on;
 // in widescreen a picture with square pixels has x = 4/3 y. Kept within Direct3D 9's 8192 texture limit.
 void setup_render_scale(int pic_w, int pic_h)
 {
-    float aspect = g_cfg.widescreen ? 4.0f / 3.0f : 1.0f, w = (float)g_width, h = (float)g_height;
+    float aspect = picture_aspect() * 0.75f, w = (float)g_width, h = (float)g_height; // over the 4:3 buffer
     float sx = g_cfg.scale * aspect, sy = g_cfg.scale;
     if (g_cfg.render_native && pic_w > 0 && pic_h > 0) {
         sx = pic_w * g_cfg.render_factor / w;
@@ -518,6 +519,11 @@ void present_backbuffer()
     // at the game's aspect with black bars when the window's shape differs (fullscreen, maximised).
     RECT frame, pic;
     host3d::frame_layout(&frame, &pic);
+    if (g_cfg.widescreen && g_cfg.ultrawide && movie_playing()) { // movies are 16:9: undo the stretch, with bars
+        LONG w = (pic.bottom - pic.top) * 16 / 9, x = (pic.left + pic.right - w) / 2;
+        pic.left = x;
+        pic.right = x + w;
+    }
     if (pic.left > 0 || pic.top > 0 || pic.right < frame.right || pic.bottom < frame.bottom)
         host3d::dev()->ColorFill(g_host_backbuffer, &frame, 0);
     if (g_cfg.aa && !g_fxaa_ps) {
@@ -872,7 +878,9 @@ HRESULT __stdcall Direct3D_CreateDevice(uint32_t Adapter, uint32_t DeviceType, u
     g_height = pp->BackBufferHeight ? pp->BackBufferHeight : 480;
     // The window and the host back buffer are the screen-sized output; the game renders into host render
     // targets at Xbox size x render scale, filtered into the back buffer at Swap.
-    if (!host3d::open_window(g_cfg.window_w, g_cfg.window_h, g_cfg.widescreen ? 16 : 4, g_cfg.widescreen ? 9 : 3))
+    int aw = !g_cfg.widescreen ? 4 : g_cfg.ultrawide == 1 ? 64 : g_cfg.ultrawide == 2 ? 32 : 16;
+    int ah = !g_cfg.widescreen ? 3 : g_cfg.ultrawide == 1 ? 27 : 9;
+    if (!host3d::open_window(g_cfg.window_w, g_cfg.window_h, aw, ah))
         return D3DERR_NOTAVAILABLE;
     if (!host3d::create_device()) return D3DERR_NOTAVAILABLE;
     RECT frame, pic; // the picture's size in the window (for --resolution native)
@@ -881,7 +889,7 @@ HRESULT __stdcall Direct3D_CreateDevice(uint32_t Adapter, uint32_t DeviceType, u
     g_native_h = pic.bottom - pic.top;
     setup_render_scale(g_native_w, g_native_h);
     logf("[d3d] rendering at %ux%u (x%.4g by x%.4g the Xbox's %dx%d, %s), picture in the window %ldx%ld", host_w(g_width),
-         host_h(g_height), scale_x(), scale_y(), g_width, g_height, g_cfg.widescreen ? "widescreen 16:9" : "4:3",
+         host_h(g_height), scale_x(), scale_y(), g_width, g_height, !g_cfg.widescreen ? "4:3" : g_cfg.ultrawide == 1 ? "ultrawide 21:9" : g_cfg.ultrawide == 2 ? "ultrawide 32:9" : "widescreen 16:9",
          pic.right - pic.left, pic.bottom - pic.top);
     host3d::dev()->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &g_host_backbuffer);
     host3d::dev()->GetDepthStencilSurface(&g_host_depth);

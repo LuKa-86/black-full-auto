@@ -42,8 +42,7 @@ std::vector<pcset::Group> groups()
     for (const pcset::Group &g : pcset::groups()) {
         pcset::Group h = g;
         h.rows.clear();
-        for (int n : g.rows)
-            if (!pcset::restart_only(n)) h.rows.push_back(n);
+        for (int n : g.rows) h.rows.push_back(n); // aspect ratio and frame rate too: their values say (NEXT START)
         if (!h.rows.empty()) out.push_back(h);
     }
     return out;

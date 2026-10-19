@@ -38,6 +38,7 @@ bool in_play(); // the player is being updated (not a menu, pause or cutscene)
 // 5 select (Enter), 6 back (Backspace); 0 none. The front end's input (fe/calls.cpp) takes it.
 int take_menu_input();
 bool menu_select_held(); // Enter held in a menu or movie (movies: skip)
+int lean_dir();         // the lean keys held at the last poll in play: -1 left, 1 right, 0 (input/lean.cpp)
 bool sprint_held();      // a sprint key was held at the last poll in play (input/player_extras.cpp)
 void press_game_action(int game); // press the pad input of this game action (binding-table index) at the next poll
 bool grenade_held();     // the grenade key at the last poll in play; with cooking on it does not reach the game// Tests: --press "SECONDSs:k:Name" holds a key (black.ini spelling) for the next poll, without focus.

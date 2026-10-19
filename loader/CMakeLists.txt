@@ -37,6 +37,8 @@ add_library(blackrt SHARED
   src/input/autoaim.cpp
   src/input/player_extras.cpp
   src/input/hits.cpp
+  src/input/damage.cpp
+  src/input/lean.cpp
   src/input/cheats.cpp
   src/input/bindings.cpp
   src/input/movies.cpp

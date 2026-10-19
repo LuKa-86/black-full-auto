@@ -63,6 +63,10 @@ struct Config {
     // for original Xbox games: BLACK then uses a 16:9 projection and its `_wide` UI layouts in the same 640x480
     // buffer (anamorphic), and the loader renders and shows that buffer at 16:9. --normal-aspect turns it off.
     bool widescreen = true;
+    // Ultrawide (with widescreen): 0 = 16:9, 1 = 21:9 (64:27), 2 = 32:9. The game's projection gets the wider aspect
+    // (0x15A987), the host targets and window the wider shape, the FOV widens to keep the 16:9 height (fov.cpp), and
+    // the HUD and text stay a 16:9 block in the middle (d3d/draw.cpp, hud_squeeze).
+    int ultrawide = 0;
     bool fullscreen = false;   // --fullscreen: start borderless fullscreen
     // Mouse look rotates the player directly (input/mouselook.cpp): mouse_sens x 0.022 degrees per count, the
     // scale most PC shooters use.
@@ -90,6 +94,10 @@ struct Config {
     int look_x = 100, look_y = 175; // controller look speed in percent of the game's, horizontal / vertical (input/mouselook.cpp)
     int look_curve = 1;        // stick response: 0 the game's (squared), 1 modern (power 1.5), 2 linear
     int look_boost = 1;        // extra turn speed at full tilt: 0 the game's (builds over 0.5 s), 1 fast (0.2 s), 2 off
+    int lean = 2;              // tactical lean distance: 0 off, 1 small, 2 medium, 3 large (input/lean.cpp)
+    bool blood_log = false;    // black.ini blood_log = 1: log the draws after each hit (d3d/draw.cpp, blood_log)
+    int blood_colour = 0;      // 0 the game's (near black), 1 red, 2 dark red, 3 green, 4 blue, 5 yellow (d3d/draw.cpp)
+    float enemy_damage = 1.0f; // damage enemies take, times the game's (input/damage.cpp; PC SETTINGS > GAMEPLAY > MORE)
     int unfocused = 1;         // window in the background: 0 carry on, 1 mute, 2 mute and pause the game (input/xinput.cpp)
     bool hit_marker = true;    // a mark on the crosshair when the player's shot or grenade hurts an enemy (d3d/overlay.cpp)
     bool grenade_warning = true; // an arrow towards a live grenade close to the player (d3d/overlay.cpp)
@@ -108,6 +116,7 @@ struct Config {
     // the running session keeps the values above (0 / -1 = no change chosen).
     int fps_next = 0;
     int widescreen_next = -1;
+    int ultrawide_next = -1;
     bool reverb = true;        // mix the I3DL2 reverb send (--no-reverb to compare)
     float reverb_gain = 1.0f;  // --reverb-gain: overall reverb level
     bool background = false;   // --background (tests): window minimised without focus, audio muted
@@ -137,6 +146,13 @@ struct Config {
     bool watch_read_deref = false, watch_write_only = false;
 };
 extern Config g_cfg;
+
+// The picture's shape: 4:3, 16:9 or the ultrawide choice (width / height).
+inline float picture_aspect()
+{
+    if (!g_cfg.widescreen) return 4.0f / 3.0f;
+    return g_cfg.ultrawide == 1 ? 64.0f / 27.0f : g_cfg.ultrawide == 2 ? 32.0f / 9.0f : 16.0f / 9.0f;
+}
 extern DWORD_PTR g_game_cpu; // affinity of the threads that run game code (0 = any, --multicore)
 extern uint32_t g_pad_watch; // address DR3 watches for --watch-pad (input/xinput.cpp), 0 = off
 extern std::atomic<uint32_t> g_frame_count; // frames presented so far (d3d/device.cpp)
