@@ -359,7 +359,7 @@ void health_text(std::vector<TextBatch> &batches, const RECT &pic)
     int pct = std::clamp((int)std::lround(f * 100.0f), 0, 100);
     // The HUD's 640 units span the picture, or its middle 16:9 in ultrawide (the HUD is kept 16:9 there, draw.cpp)
     float pw = (float)(pic.right - pic.left), hud_w = std::min(pw, (pic.bottom - pic.top) * 16.0f / 9.0f);
-    float left = pic.left + (pw - hud_w) * 0.5f;
+    float left = g_cfg.hud_edges ? (float)pic.left : pic.left + (pw - hud_w) * 0.5f; // the panel is on the left
     float sx = hud_w / 640.0f, sy = (pic.bottom - pic.top) / 480.0f;
     Font *font = make_font(std::max(8, (int)std::lround(12.5f * sy))); // about the ammo numbers' height
     if (!font) return;

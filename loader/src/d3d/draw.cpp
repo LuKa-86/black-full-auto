@@ -10,6 +10,7 @@
 #include "d3d/pushbuf.h"
 #include "d3d/state.h"
 #include "input/hits.h"
+#include "input/mouselook.h"
 #include "d3d/vshader.h"
 #include "fov.h"
 #include "perf.h"
@@ -918,24 +919,86 @@ void hide_game_crosshair(uint32_t prim, uint32_t count, uint8_t *verts, uint32_t
 
 // Ultrawide: the HUD, its text and the objective messages (FUN_000D4C50's batches, marked by fov.cpp's thunk) are
 // laid out for 16:9, so their x is pulled towards the centre by 1.778 / aspect and they stay a 16:9 block in the
-// middle of the wider picture. Only on the 640-wide screen targets (not the small effect buffers), and not for
+// middle of the wider picture. With `hud_edges` (HUD POSITION: SCREEN EDGES) a batch that lies wholly left or right of
+// the centre is anchored to that edge instead, as the 16:9 layout has it (the health and ammo panels and their texts
+// are batches of their own); batches that cross the centre (objectives, prompts) stay in the middle. Only on the 640-wide screen targets (not the small effect buffers), and not for
 // draws that span the whole width (fades, full-screen overlays), which keep filling the picture.
-void hud_squeeze(uint32_t count, uint8_t *verts, uint32_t stride)
+void hud_squeeze(uint32_t prim, uint32_t count, uint8_t *verts, uint32_t stride)
 {
     if (!g_hud_2d || !g_cfg.widescreen || !g_cfg.ultrawide || !count) return;
     float vp[8];
     viewport_transform(vp, vp + 4); // half the viewport's width: 320 on the screen targets
     if (std::fabs(vp[0] - 320.0f) > 1.0f) return;
+    auto X = [&](uint32_t i) -> float & { return *(float *)(verts + (size_t)i * stride); };
+    auto Y = [&](uint32_t i) { return *(const float *)(verts + (size_t)i * stride + 4); };
     float k = (16.0f / 9.0f) / picture_aspect(), x0 = 1e9f, x1 = -1e9f;
-    for (uint32_t i = 0; i < count; i++) {
-        float x = *(const float *)(verts + (size_t)i * stride);
-        x0 = std::min(x0, x), x1 = std::max(x1, x);
-    }
+    for (uint32_t i = 0; i < count; i++) x0 = std::min(x0, X(i)), x1 = std::max(x1, X(i));
     if (x0 <= 1.0f && x1 >= 639.0f) return;
-    for (uint32_t i = 0; i < count; i++) {
-        float *x = (float *)(verts + (size_t)i * stride);
-        *x = 320.0f + (*x - 320.0f) * k;
+    const float edge = 320.0f - 320.0f * k; // how far the 16:9 block's sides are from the picture's
+    std::vector<float> shift(count, 0.0f);
+    // edges in play only: the menus' and pause screen's texts are laid out across the centre (a player update in the
+    // last 3 frames = in play, input/mouselook.cpp)
+    uint32_t play = mouselook_play_frame();
+    if (g_cfg.hud_edges && play && g_frame_count.load() - play < 3) {
+        // A batch can hold both side panels, so it is cut into pieces: quads (QUADLIST), or the runs of a strip between
+        // its stitching duplicates (two equal vertices; each duplicate goes with the run of its twin, so the joining
+        // triangles stay degenerate). Pieces that touch (letters of a text, parts of a panel) join into clusters, and a
+        // cluster wholly left or right of the centre moves to that edge.
+        struct Piece { uint32_t a, b; float x0, x1, y0, y1; };
+        std::vector<Piece> pieces;
+        auto add = [&](uint32_t a, uint32_t b) {
+            Piece p = {a, b, 1e9f, -1e9f, 1e9f, -1e9f};
+            for (uint32_t i = a; i < b; i++)
+                p.x0 = std::min(p.x0, X(i)), p.x1 = std::max(p.x1, X(i)), p.y0 = std::min(p.y0, Y(i)), p.y1 = std::max(p.y1, Y(i));
+            pieces.push_back(p);
+        };
+        auto same = [&](uint32_t i, uint32_t j) { return X(i) == X(j) && Y(i) == Y(j); };
+        std::vector<int> twin(count, -1); // a stitching duplicate's twin (the equal vertex next to it)
+        if (prim == 8) {
+            for (uint32_t q = 0; q + 4 <= count; q += 4) add(q, q + 4);
+        } else if (prim == 6) {
+            uint32_t a = 0;
+            for (uint32_t i = 1; i <= count; i++)
+                if (i == count || same(i, i - 1)) {
+                    if (i < count) twin[i] = (int)i - 1, twin[i - 1] = (int)i;
+                    if (i - a > 2) add(a, i);
+                    a = i;
+                }
+        } else {
+            add(0, count);
+        }
+        // join pieces that touch or nearly touch (any order: a text's letters need not come one after another)
+        size_t n = pieces.size();
+        std::vector<size_t> root(n);
+        for (size_t a = 0; a < n; a++) root[a] = a;
+        auto find = [&](size_t a) {
+            while (root[a] != a) a = root[a] = root[root[a]];
+            return a;
+        };
+        for (size_t a = 0; a < n; a++)
+            for (size_t b = a + 1; b < n; b++) {
+                const Piece &p = pieces[a], &q = pieces[b];
+                if (q.x0 < p.x1 + 20 && q.x1 > p.x0 - 20 && q.y0 < p.y1 + 6 && q.y1 > p.y0 - 6) root[find(a)] = find(b);
+            }
+        std::vector<float> cx0(n, 1e9f), cx1(n, -1e9f);
+        for (size_t a = 0; a < n; a++) {
+            size_t r = find(a);
+            cx0[r] = std::min(cx0[r], pieces[a].x0), cx1[r] = std::max(cx1[r], pieces[a].x1);
+        }
+        std::vector<int> cls(count, 0);
+        for (size_t a = 0; a < n; a++) {
+            size_t r = find(a);
+            int side = cx1[r] <= 320.0f ? -1 : cx0[r] >= 320.0f ? 1 : 0;
+            for (uint32_t i = pieces[a].a; i < pieces[a].b; i++) cls[i] = side;
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            int c = cls[i] != 0 || twin[i] < 0 ? cls[i] : cls[twin[i]]; // a stitching duplicate follows its twin
+            shift[i] = c * edge;
+        }
+        for (uint32_t i = 0; i < count; i++) // a stitching pair moves as one
+            if (twin[i] >= 0) shift[i] = shift[twin[i]] = (std::fabs(shift[i]) > std::fabs(shift[twin[i]]) ? shift[i] : shift[twin[i]]);
     }
+    for (uint32_t i = 0; i < count; i++) X(i) = 320.0f + (X(i) - 320.0f) * k + shift[i];
 }
 
 // Blood colour (`blood_colour`, PC SETTINGS > GAMEPLAY > MORE GAMEPLAY). The blood is particles drawn tex x diffuse with
@@ -1019,7 +1082,7 @@ void __stdcall D3DDevice_DrawVerticesUP(uint32_t PrimitiveType, uint32_t VertexC
     if (ctx.path == Path::Prog) {
         uint32_t stride = convert_vertices(ctx.vs, 0, VertexCount, (const uint8_t *)pVertexStreamZeroData, VertexStreamZeroStride);
         hide_game_crosshair(PrimitiveType, VertexCount, (uint8_t *)g_conv.data(), stride);
-        hud_squeeze(VertexCount, (uint8_t *)g_conv.data(), stride);
+        hud_squeeze(PrimitiveType, VertexCount, (uint8_t *)g_conv.data(), stride);
         blood_colour(VertexCount, (uint8_t *)g_conv.data(), stride);
         blood_log("UP", ctx, PrimitiveType, VertexCount, g_conv.data(), stride);
         debug_draw("DrawVerticesUP", ctx, PrimitiveType, VertexCount, g_conv.data(), stride / 4);

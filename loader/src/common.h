@@ -67,6 +67,7 @@ struct Config {
     // (0x15A987), the host targets and window the wider shape, the FOV widens to keep the 16:9 height (fov.cpp), and
     // the HUD and text stay a 16:9 block in the middle (d3d/draw.cpp, hud_squeeze).
     int ultrawide = 0;
+    bool hud_edges = false; // ultrawide: the HUD's side panels at the screen's edges instead of in the middle 16:9
     bool fullscreen = false;   // --fullscreen: start borderless fullscreen
     // Mouse look rotates the player directly (input/mouselook.cpp): mouse_sens x 0.022 degrees per count, the
     // scale most PC shooters use.

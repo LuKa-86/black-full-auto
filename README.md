@@ -82,8 +82,9 @@ off at once and gives you BLACK as it was.
 ### Display
 
 - **Ultrawide**: 21:9 and 32:9 as well as 16:9 and 4:3 (PC SETTINGS > DISPLAY > ASPECT RATIO, from the next start).
-  The view widens at the sides, while the HUD stays a 16:9 block in the middle and the movies keep their shape with
-  black bars.
+  The view widens at the sides and the movies keep their shape with black bars. The HUD stays a 16:9 block in the
+  middle, or with HUD POSITION > SCREEN EDGES the health and ammo panels sit at the screen's edges while the
+  objectives and prompts stay centred.
 
 <p align="center">
   <img src="docs/images/ultrawide.jpg" alt="21:9 ultrawide" width="90%">
@@ -195,10 +196,10 @@ right to change a setting and select to open a page marked ›. Changes apply im
 |---|---|
 | VIDEO | resolution, anti-aliasing, field of view, brightness, gamma, fullscreen |
 | DISPLAY | aspect ratio (16:9, 4:3, 21:9, 32:9) and frame rate (both applied at the next start), seam filling, effects at Xbox size, crosshair, HUD › |
-| › HUD | crosshair colour, health percentage, enemy markers, hit marker, grenade warning, reload prompt |
+| › HUD | crosshair colour, health percentage, HUD position (ultrawide), hit marker, grenade warning, reload prompt |
 | AUDIO AND GAME | room reverb, in background, auto-aim, skip any movie, GAMEPLAY ›, settings preset |
 | › GAMEPLAY | sprint speed, automatic health pack, aim (toggle or hold), reload speed, grenade cooking, MORE GAMEPLAY › |
-| › MORE GAMEPLAY | damage to enemies, lean, blood colour, reload blur |
+| › MORE GAMEPLAY | damage to enemies, lean, blood colour, reload blur, enemy markers |
 | CONTROLS | mouse sensitivity, invert mouse, key bindings ›, controller layout, stick layout, vibration |
 
 The field of view is horizontal, in degrees (the game's is 70; 86 shows the same height as 4:3). Aiming, cutscenes

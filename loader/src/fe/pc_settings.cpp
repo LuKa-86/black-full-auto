@@ -300,6 +300,9 @@ const Row kRows[] = {
     // link to the MORE GAMEPLAY page (kMoreLink)
     {"MORE", 1, [] { return 0; }, [](int) {}, [](int) { return std::wstring(); }},
     // MORE GAMEPLAY page (d3d/draw.cpp, blood_colour)
+    // HUD page (d3d/draw.cpp, hud_squeeze): only with an ultrawide aspect
+    {"HUD POSITION", 2, [] { return (int)g_cfg.hud_edges; }, [](int i) { g_cfg.hud_edges = i != 0; },
+     [](int i) { return std::wstring(i ? L"SCREEN EDGES" : L"CENTRE 16:9") + (shown_aspect() < 2 ? L" (ULTRAWIDE ONLY)" : L""); }},
     {"BLOOD COLOUR", 6, [] { return g_cfg.blood_colour; }, [](int i) { g_cfg.blood_colour = i; },
      [](int i) {
          static const wchar_t *k[] = {L"ORIGINAL", L"RED", L"DARK RED", L"GREEN", L"BLUE", L"YELLOW"};
@@ -308,7 +311,7 @@ const Row kRows[] = {
 };
 constexpr int kRowN = sizeof kRows / sizeof kRows[0];
 constexpr int kKeyBindings = 15, kHudLink = 24, kGameplayLink = 25, kPreset = 35, kDamageRow = 36, kLeanRow = 37,
-              kMoreLink = 38, kBloodRow = 39;
+              kMoreLink = 38, kHudPosRow = 39, kBloodRow = 40;
 
 } // namespace
 
@@ -319,9 +322,9 @@ const std::vector<Group> &groups()
         {"PCDisplay", "DISPLAY", {6, 7, 8, 9, 20, kHudLink}},
         {"PCGame", "AUDIO AND GAME", {10, 26, 11, 12, kGameplayLink, kPreset}},
         {"PCControls", "CONTROLS", {13, 14, kKeyBindings, 28, 29, 27}},
-        {"PCHud", "HUD", {21, 23, 30, 31, 32, 33}, "PCDisplay"},
+        {"PCHud", "HUD", {21, 23, kHudPosRow, 31, 32, 33}, "PCDisplay"},
         {"PCGameplay", "GAMEPLAY", {17, 18, 19, 22, 34, kMoreLink}, "PCGame"},
-        {"PCMore", "MORE GAMEPLAY", {kDamageRow, kLeanRow, kBloodRow, 16}, "PCGameplay"},
+        {"PCMore", "MORE GAMEPLAY", {kDamageRow, kLeanRow, kBloodRow, 16, 30}, "PCGameplay"},
     };
     return g;
 }

@@ -177,6 +177,7 @@ bool parse_args()
         }
         else if (a == L"--skip-videos") g_cfg.skip_videos = true;
         else if (a == L"--normal-aspect") { g_cfg.widescreen = false; settings_mark_cli("widescreen"); }
+        else if (a == L"--hud-edges") { g_cfg.hud_edges = true; settings_mark_cli("hud_edges"); }
         else if (a == L"--ultrawide") {
             std::wstring v;
             if (!next(v)) return false;
